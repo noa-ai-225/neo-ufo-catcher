@@ -4,4 +4,4 @@
 
 🎮 **今すぐブラウザで遊ぶ**: https://noa-ai-225.github.io/neo-ufo-catcher/
 
-📝 **公式連載マガジン**: https://note.com/77_noa/m/m43516f497dc4
+📝 **公式連載マガジン**: https://note.com/77_noa/m/meaf0b4e02649
