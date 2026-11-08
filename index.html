@@ -1,0 +1,2895 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>UFOキャッチャー「？型フック×真円Oリング」実機物理シミュレーター</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', 'Noto Sans JP', sans-serif;
+      background-color: #090d16;
+      color: #f8fafc;
+    }
+    /* 実機アーケードボタンスタイル */
+    .arcade-btn {
+      position: relative;
+      transition: transform 0.05s ease, box-shadow 0.05s ease, filter 0.1s ease;
+      touch-action: none;
+    }
+    .arcade-btn:active:not(:disabled),
+    .arcade-btn.pressed:not(:disabled) {
+      transform: translateY(5px);
+    }
+    .arcade-btn:disabled {
+      opacity: 0.35;
+      filter: grayscale(75%);
+      cursor: not-allowed;
+    }
+    .btn-pink {
+      background: radial-gradient(circle at 50% 30%, #ff7eb3, #ec4899 58%, #be185d 100%);
+      box-shadow: 0 7px 0 #831843, 0 12px 20px rgba(0,0,0,0.6), inset 0 2px 5px rgba(255,255,255,0.65);
+    }
+    .btn-pink:active:not(:disabled), .btn-pink.pressed:not(:disabled) {
+      box-shadow: 0 2px 0 #831843, 0 4px 8px rgba(0,0,0,0.5), inset 0 2px 5px rgba(255,255,255,0.4);
+    }
+    .btn-cyan {
+      background: radial-gradient(circle at 50% 30%, #67e8f9, #06b6d4 58%, #0e7490 100%);
+      box-shadow: 0 7px 0 #164e63, 0 12px 20px rgba(0,0,0,0.6), inset 0 2px 5px rgba(255,255,255,0.65);
+    }
+    .btn-cyan:active:not(:disabled), .btn-cyan.pressed:not(:disabled) {
+      box-shadow: 0 2px 0 #164e63, 0 4px 8px rgba(0,0,0,0.5), inset 0 2px 5px rgba(255,255,255,0.4);
+    }
+    .btn-emerald {
+      background: radial-gradient(circle at 50% 30%, #6ee7b7, #10b981 58%, #047857 100%);
+      box-shadow: 0 7px 0 #064e3b, 0 12px 20px rgba(0,0,0,0.6), inset 0 2px 5px rgba(255,255,255,0.65);
+    }
+    .btn-emerald:active:not(:disabled), .btn-emerald.pressed:not(:disabled) {
+      box-shadow: 0 2px 0 #064e3b, 0 4px 8px rgba(0,0,0,0.5), inset 0 2px 5px rgba(255,255,255,0.4);
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    @keyframes pulseRing {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7), 0 7px 0 #064e3b; }
+      50% { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0), 0 7px 0 #064e3b; }
+    }
+    .stop-ready-pulse {
+      animation: pulseRing 1.05s infinite;
+    }
+    @keyframes getPopIn {
+      0% { transform: scale(0.72) translateY(24px); opacity: 0; }
+      65% { transform: scale(1.03) translateY(-4px); opacity: 1; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    @keyframes neonBorderGlow {
+      0%, 100% {
+        box-shadow: 0 0 22px rgba(56, 189, 248, 0.75), 0 0 45px rgba(236, 72, 153, 0.55), inset 0 0 16px rgba(250, 204, 21, 0.45);
+      }
+      50% {
+        box-shadow: 0 0 34px rgba(250, 204, 21, 0.9), 0 0 65px rgba(56, 189, 248, 0.75), inset 0 0 24px rgba(236, 72, 153, 0.6);
+      }
+    }
+    .win-card-anim {
+      animation: getPopIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards, neonBorderGlow 2.4s infinite ease-in-out;
+    }
+    /* スマホ下部ナビバー＆Gemini入力バー回避用セーフエリア */
+    .mobile-safe-footer {
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--btn-bottom-offset, 152px));
+    }
+    @media (min-width: 640px) {
+      .mobile-safe-footer {
+        padding-bottom: 0.5rem !important;
+      }
+    }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+  </style>
+</head>
+<body class="flex flex-col h-screen w-screen overflow-hidden select-none">
+
+  <!-- ==================== トップバー（スマホ横幅でも絶対に見切れないコンパクト＆折返し対応設計） ==================== -->
+  <header class="glass-panel z-30 px-1.5 py-1 flex flex-wrap items-center justify-between gap-1 border-b border-slate-800 shrink-0">
+    <!-- 左：アイコン＋GET数 -->
+    <div class="flex items-center gap-1 shrink-0">
+      <div class="w-5 h-5 rounded bg-gradient-to-br from-pink-500 to-amber-500 flex items-center justify-center font-black text-[11px] text-white shrink-0">
+        ？
+      </div>
+      <span class="hidden lg:inline text-xs font-black tracking-tight text-white mr-1">
+        UFOキャッチャー「？型フック×真円リング」実機シミュレーター
+      </span>
+      <div class="flex items-center gap-0.5 bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700/80 text-[10px] font-mono">
+        <span class="text-slate-400">GET</span>
+        <span id="win-count" class="font-black text-emerald-400">0</span>
+        <span id="credit-count" class="hidden">99</span>
+      </div>
+    </div>
+
+    <!-- 右：カメラ切替・ワイプ切替・オート・リセット・設定（スマホ1行に収まる極小パディング） -->
+    <div class="flex flex-wrap items-center justify-end gap-1">
+      <!-- カメラプリセット -->
+      <div class="flex bg-slate-900/95 p-0.5 rounded border border-slate-700/80">
+        <button data-cam="front" class="cam-btn px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-600 text-white transition">正</button>
+        <button data-cam="diagram" class="cam-btn px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-300 hover:text-white transition">上</button>
+        <button data-cam="side" class="cam-btn px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-300 hover:text-white transition">横</button>
+        <button data-cam="closeup" class="cam-btn px-1.5 py-0.5 rounded text-[10px] font-bold text-amber-300 hover:text-white transition">拡</button>
+      </div>
+
+      <!-- ワイプ表示切替ボタン -->
+      <button id="toggle-pip-btn" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[10px] font-bold text-cyan-300 transition" title="ワイプ画面の表示切替">
+        📺自動
+      </button>
+
+      <!-- オート実演（必ず取れるお手本再生）ボタン -->
+      <button id="auto-win-btn" class="px-1.5 py-0.5 rounded bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 border border-emerald-300/70 text-[10px] font-black text-white shadow transition" title="必ず取れるオート実演モード">
+        🎯オート
+      </button>
+
+      <!-- クレーン初期位置リセット -->
+      <button id="reset-crane-btn" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[10px] font-bold text-slate-200 transition" title="初期位置へリセット">
+        🔄
+      </button>
+
+      <!-- スマホ用ボタン高さ調整 -->
+      <button id="btn-pos-adjust" class="sm:hidden px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-pink-500/60 text-[10px] font-bold text-pink-300 transition" title="下部ボタンの高さを調整">
+        ↕
+      </button>
+
+      <!-- 設定ドロワー開閉（見切れ防止のため強調配置） -->
+      <button id="open-settings-btn" class="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/80 text-[10px] font-black text-amber-300 transition shadow">
+        ⚙️設定
+      </button>
+
+      <!-- 音声トグル -->
+      <button id="sound-btn" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[10px]" title="効果音 ON/OFF">
+        🔊
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== メイン3Dビューポート領域 ==================== -->
+  <main id="viewport-wrapper" class="relative flex-1 w-full overflow-hidden bg-slate-950">
+    <!-- Three.js キャンバスコンテナ -->
+    <div id="canvas-container" class="w-full h-full"></div>
+
+    <!-- ---------- 左上：極小コンパクトHUD（画面を塞がないマイクロ表示） ---------- -->
+    <div class="absolute top-1.5 left-1.5 z-10 flex flex-col gap-1 pointer-events-none max-w-[54vw] sm:max-w-xs">
+      <div class="glass-panel rounded-lg px-2 py-1 shadow-lg border-l-2 border-pink-500 pointer-events-auto">
+        <!-- 状態＆ワンタップ揺れ生成 -->
+        <div class="flex items-center justify-between gap-1.5 mb-0.5">
+          <span id="state-badge" class="px-1 py-0.2 rounded text-[9px] font-bold bg-pink-500/20 text-pink-300 truncate">
+            待機中
+          </span>
+          <div class="flex items-center gap-1 shrink-0">
+            <button id="kick-sway-btn" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[9px] font-bold text-cyan-300 transition">
+              🌊揺らす
+            </button>
+            <button id="calm-sway-btn" class="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[9px] text-slate-300 transition">
+              静止
+            </button>
+          </div>
+        </div>
+
+        <!-- 1行マイクロ数値テレメトリー -->
+        <div class="flex items-center gap-2 text-[9px] sm:text-[10px] font-mono whitespace-nowrap">
+          <div><span class="text-slate-400">X:</span><span id="hud-dx" class="font-bold text-white">--</span></div>
+          <div><span class="text-slate-400">Z:</span><span id="hud-dz" class="font-bold text-white">--</span></div>
+          <div><span class="text-slate-400">高:</span><span id="hud-clearance" class="font-bold text-emerald-400">--</span></div>
+          <span id="climax-slow-badge" class="hidden px-1 rounded bg-amber-500/30 border border-amber-400 text-amber-200 text-[8px] font-bold animate-pulse">SLOW演出中</span>
+          <span id="hud-tilt" class="hidden">0.0</span>
+        </div>
+
+        <!-- 極細の周期バー -->
+        <div class="mt-1 flex items-center gap-1.5">
+          <div class="relative flex-1 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-700">
+            <div class="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-500 z-10"></div>
+            <div id="phase-sweet-zone" class="absolute top-0 bottom-0 right-0.5 w-2/5 bg-emerald-500/25 border-l border-emerald-400/50"></div>
+            <div id="phase-dot" class="absolute top-0 w-2 h-2 rounded-full bg-cyan-400 shadow transition-none" style="left: calc(50% - 4px);"></div>
+          </div>
+          <span id="phase-recommend" class="text-[8px] font-bold text-cyan-300 w-14 text-right truncate">静止</span>
+          <span id="hook-open-label" class="hidden">★右空き</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- 右上：小型ワイプ画面 (スマホでは邪魔にならない124x84サイズ＆自動切替) ---------- -->
+    <div id="pip-container" class="absolute top-1.5 right-1.5 z-10 flex flex-col gap-1.5 pointer-events-none">
+      <!-- ワイプ1: SIDE CAM (真横連動モニター) -->
+      <div id="side-cam-box" class="border border-cyan-500/80 rounded-lg overflow-hidden shadow-lg bg-slate-950/30 relative pointer-events-auto w-[124px] h-[84px] sm:w-[176px] sm:h-[116px]">
+        <div id="side-cam-header" class="bg-slate-950/80 px-1.5 py-0.5 border-b border-cyan-500/30 flex items-center justify-between text-[8px] relative z-20">
+          <span class="font-bold text-cyan-300 truncate">SIDE (真横)</span>
+          <button id="side-cam-mode-btn" class="px-1 rounded bg-cyan-900/80 text-cyan-200 border border-cyan-400/40 font-mono text-[7px]">
+            AUTO
+          </button>
+        </div>
+        <canvas id="side-cam-overlay" width="176" height="116" class="absolute inset-0 w-full h-full pointer-events-none z-10"></canvas>
+      </div>
+
+      <!-- ワイプ2: FRONT ZOOM (正面開口部モニター) -->
+      <div id="front-cam-box" class="hidden sm:block border border-amber-500/80 rounded-lg overflow-hidden shadow-lg bg-slate-950/30 relative w-[124px] h-[84px] sm:w-[176px] sm:h-[116px]">
+        <div class="bg-slate-950/80 px-1.5 py-0.5 border-b border-amber-500/30 flex items-center justify-between text-[8px] relative z-20">
+          <span class="font-bold text-amber-300 truncate">FRONT (正面拡大)</span>
+          <span class="text-emerald-300 font-bold text-[7px]">★開口部</span>
+        </div>
+
+        <!-- 開口部高さインジケーターバー -->
+        <div class="absolute right-1 top-4 bottom-1 w-2.5 bg-slate-950/90 rounded border border-slate-700 overflow-hidden flex flex-col justify-end p-0.5 z-20">
+          <div class="absolute left-0 right-0 bottom-[16%] h-[28%] bg-emerald-500/40 border-y border-emerald-400" title="開口部スイートスポット"></div>
+          <div class="absolute left-0 right-0 bottom-0 h-[16%] bg-rose-500/45" title="床ベタ域"></div>
+          <div id="stop-height-marker" class="w-full h-1 bg-white rounded-sm shadow transition-none" style="margin-bottom: 100%;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- 中央下：AI攻略アナライザー（プレイ診断ポップアップ） ---------- -->
+    <div id="ai-coach-card" class="hidden absolute bottom-3 left-1/2 -translate-x-1/2 z-20 w-[94%] max-w-lg glass-panel rounded-2xl p-3.5 shadow-2xl border border-slate-600/80 transition-all">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span id="coach-icon" class="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-sm font-black text-amber-300">💡</span>
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">AI PLAY ANALYZER (実機攻略診断)</div>
+            <h3 id="coach-title" class="text-xs sm:text-sm font-black text-white">プレイ診断結果</h3>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="disable-coach-btn" class="text-[10px] text-slate-400 hover:text-rose-300 px-2 py-0.5 rounded bg-slate-800/90 border border-slate-700" title="今後この診断ウィンドウを自動表示しない">
+            自動表示OFF
+          </button>
+          <button id="close-coach-btn" class="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800">✕</button>
+        </div>
+      </div>
+      <p id="coach-desc" class="mt-1.5 text-xs text-slate-200 leading-relaxed"></p>
+      <div id="coach-metrics" class="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono"></div>
+    </div>
+
+    <!-- ---------- トースト通知バナー ---------- -->
+    <div id="toast-banner" class="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 z-20 opacity-0 transition-opacity duration-200">
+      <div id="toast-inner" class="px-4 py-1.5 rounded-full glass-panel border border-pink-400/50 shadow-xl text-xs font-bold text-white flex items-center gap-2">
+        <span id="toast-text">READY</span>
+      </div>
+    </div>
+
+    <!-- ---------- フック捕捉＆GETリアルタイム大型インジケーター ---------- -->
+    <div id="hook-status-banner" class="hidden pointer-events-none absolute top-14 left-1/2 -translate-x-1/2 z-20">
+      <div id="hook-status-inner" class="px-4 py-1 rounded-full bg-emerald-500/90 border-2 border-white shadow-lg shadow-emerald-500/50 text-xs sm:text-sm font-black text-slate-950 tracking-wider animate-bounce">
+        ✨ HOOK IN!! フック捕捉中！
+      </div>
+    </div>
+
+    <!-- ---------- 獲得祝福モーダル（NEO ★GET!!★ カスタムイラスト仕様） ---------- -->
+    <div id="win-modal" class="hidden absolute inset-0 z-40 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4">
+      <div id="win-card" class="win-card-anim glass-panel rounded-3xl p-3 sm:p-4 max-w-lg w-full text-center border-2 border-cyan-400/90 relative overflow-hidden">
+        <!-- 上部サイバーネオン装飾バー -->
+        <div class="flex items-center justify-between gap-2 mb-2 px-1">
+          <div class="flex items-center gap-1.5">
+            <span class="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 via-yellow-300 to-pink-500 text-slate-950 font-black text-[10px] sm:text-xs tracking-wider shadow">
+              ★ GET!! ★
+            </span>
+            <span id="win-method-badge" class="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/50 text-cyan-200 text-[10px] sm:text-xs font-bold truncate max-w-[200px] sm:max-w-xs">
+              ？型フック完全捕捉・獲得成功！
+            </span>
+          </div>
+          <label for="custom-win-img-input" class="cursor-pointer px-2 py-0.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-[9px] text-slate-300 transition shrink-0" title="端末内の画像を選択して差し替える">
+            🖼️画像変更
+          </label>
+          <input id="custom-win-img-input" type="file" accept="image/*" class="hidden" />
+        </div>
+
+        <!-- メイン獲得イラスト（ネオのネオンアーケード大勝利！.png / image_d81d87.jpg） -->
+        <div class="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-amber-300/80 shadow-2xl bg-slate-900 group">
+          <img
+            id="win-celebration-img"
+            src="neo_win_celebration.png"
+            alt="★GET!!★ お兄ちゃん、お姉ちゃん やったね！ゲットだー！ NEO CELEBRATION"
+            class="w-full h-full object-cover"
+            onerror="if(!this.dataset.retry){this.dataset.retry='1';this.src='image_d81d87.jpg';}else if(!this.dataset.fallback){this.dataset.fallback='1';this.parentElement.classList.add('fallback-active');this.style.display='none';document.getElementById('win-img-fallback').classList.remove('hidden');}"
+          />
+          <!-- 万が一ローカル環境等でパスが見つからない場合のNEO風リッチフォールバック＆ワンタップ画像読込 -->
+          <div id="win-img-fallback" class="hidden absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-pink-950 flex flex-col items-center justify-center p-4 text-center">
+            <div class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-400 to-pink-400 drop-shadow">
+              ★ GET!! ★
+            </div>
+            <p class="mt-1 text-xs sm:text-sm font-black text-cyan-200">
+              「お兄ちゃん、お姉ちゃん やったね！ゲットだー！👑」
+            </p>
+            <p class="mt-0.5 text-[10px] font-mono text-sky-400">NEO (AGE 8) • CELEBRATION</p>
+            <label for="custom-win-img-input" class="mt-2.5 cursor-pointer px-3 py-1.5 rounded-xl bg-cyan-500/30 hover:bg-cyan-500/40 border border-cyan-300 text-[11px] font-bold text-white shadow">
+              📁 獲得イラスト (ネオのネオンアーケード大勝利！.png) を選択して表示
+            </label>
+          </div>
+          <!-- キラキラオーバーレイ枠 -->
+          <div class="pointer-events-none absolute inset-0 ring-2 ring-inset ring-white/25 rounded-2xl"></div>
+        </div>
+
+        <!-- セリフ＆獲得テレメトリーバー -->
+        <div class="mt-2.5 flex items-center justify-between gap-2 bg-slate-900/95 rounded-xl px-3 py-2 border border-cyan-500/40 text-xs">
+          <div class="text-left">
+            <div class="text-[10px] font-black text-cyan-300 tracking-wide">NEO (AGE 8) • CELEBRATION</div>
+            <div id="win-detail-text" class="text-[11px] sm:text-xs font-bold text-white">
+              お兄ちゃん、お姉ちゃん やったね！ゲットだー！👑
+            </div>
+          </div>
+          <div class="flex items-center gap-2 font-mono text-[10px] sm:text-xs shrink-0 border-l border-slate-700 pl-2.5">
+            <div>
+              <div class="text-[8px] text-slate-400">左右ΔX</div>
+              <div id="win-stat-dx" class="font-bold text-white">+0.0mm</div>
+            </div>
+            <div>
+              <div class="text-[8px] text-slate-400">奥行ΔZ</div>
+              <div id="win-stat-dz" class="font-bold text-white">+0.0mm</div>
+            </div>
+            <div>
+              <div class="text-[8px] text-slate-400">設定高</div>
+              <div id="win-stat-h" class="font-bold text-emerald-400">-6mm</div>
+            </div>
+          </div>
+        </div>
+
+        <button id="win-continue-btn" class="mt-3 w-full py-2.5 sm:py-3 rounded-xl font-black text-xs sm:text-sm bg-gradient-to-r from-cyan-400 via-amber-300 to-pink-500 text-slate-950 shadow-lg hover:brightness-110 active:scale-[0.99] transition">
+          👑 続けてプレイする（もう1回！）
+        </button>
+      </div>
+    </div>
+
+    <!-- ---------- 台設定＆攻略メソッドドロワー ---------- -->
+    <div id="settings-drawer" class="hidden absolute top-0 right-0 bottom-0 z-30 w-80 sm:w-96 glass-panel border-l border-slate-700 p-4 overflow-y-auto shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-700 pb-2.5 mb-3">
+        <h2 class="text-sm font-black text-amber-300 flex items-center gap-1.5">⚙️ 店舗設定・攻略ラボ</h2>
+        <button id="close-settings-btn" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">閉じる</button>
+      </div>
+
+      <!-- 操作方式＆揺れ感度＆AI診断 -->
+      <div class="space-y-3 text-xs">
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-200">操作モード切替</span>
+            <div class="flex bg-slate-950 p-0.5 rounded-lg border border-slate-700">
+              <button id="mode-3btn" class="px-2.5 py-1 rounded-md text-[11px] font-bold bg-pink-600 text-white shadow transition">
+                2ボタン式
+              </button>
+              <button id="mode-lever" class="px-2.5 py-1 rounded-md text-[11px] font-bold text-slate-400 hover:text-white transition">
+                レバー式(20s)
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-200">Oリング揺れ幅</span>
+            <div class="flex items-center gap-2">
+              <input id="sway-slider" type="range" min="1" max="3" step="1" value="2" class="w-20 accent-pink-500 cursor-pointer" />
+              <span id="damp-label" class="text-[11px] font-bold text-pink-300 w-24 text-right">実機標準(大振り)</span>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-200">🤖 プレイ後のAI攻略診断</span>
+            <button id="toggle-ai-btn" class="px-2.5 py-1 rounded-lg bg-indigo-950/90 hover:bg-indigo-900 border border-indigo-500/50 text-[11px] font-bold text-indigo-200 flex items-center gap-1 transition">
+              <span>AI診断:</span>
+              <span id="ai-btn-state" class="text-emerald-400 font-black">OFF</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+          <label class="font-bold text-slate-200 block mb-1.5">1. ？型フックの向き（前・後ろ・左・右）</label>
+          <select id="cfg-hook-dir" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+            <option value="right">右向き（右側が開口部）</option>
+            <option value="left">左向き（左側が開口部）</option>
+            <option value="front" selected>前向き（手前側が開口部・実機標準）</option>
+            <option value="back">後ろ向き（奥側が開口部）</option>
+          </select>
+        </div>
+
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+          <label class="font-bold text-slate-200 block mb-1.5">2. フック接近・引っ掛かり時の再生速度</label>
+          <select id="cfg-climax-speed" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+            <option value="0.38">超ゆっくり（0.38倍速・掛かる瞬間をじっくり観察）</option>
+            <option value="0.52" selected>ゆっくり確実（0.52倍速・ドキドキ演出標準）</option>
+            <option value="0.75">ややゆっくり（0.75倍速）</option>
+            <option value="1.0">等速（1.0倍速）</option>
+          </select>
+        </div>
+
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+          <label class="font-bold text-slate-200 block mb-1.5">3. フック開口幅（難易度設定）</label>
+          <select id="cfg-hook-gap" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+            <option value="wide">甘め設定（開口部が広くOリングが入りやすい）</option>
+            <option value="normal" selected>標準設定（実機で最も多い洋灯吊バランス）</option>
+            <option value="tight">激辛設定（先端が狭く、周期合わせ必須）</option>
+          </select>
+        </div>
+
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-2">
+          <label class="font-bold text-slate-200 block">4. 筐体の下降量設定（下降制限深さ）</label>
+          <select id="cfg-drop-floor" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+            <option value="just">浅め・神設定（天板スレスレ +6mm で自動停止）</option>
+            <option value="normal" selected>標準設定（天板に軽く接地 -6mm・周期で入る）</option>
+            <option value="deep">深め・床ベタ設定（-22mm まで降りてリングが大きく傾く）</option>
+            <option value="shallow_ng">高すぎ・激渋設定（+22mm 開口部の上で止まる）</option>
+          </select>
+          <div class="pt-1">
+            <div class="flex items-center justify-between text-[11px] mb-1">
+              <span class="text-slate-400">下降停止高さ微調整（天板基準）</span>
+              <span id="cfg-drop-mm-label" class="font-mono font-bold text-emerald-300">-6 mm</span>
+            </div>
+            <input id="cfg-drop-mm-slider" type="range" min="-28" max="28" step="1" value="-6" class="w-full accent-emerald-400 cursor-pointer" />
+            <div class="flex justify-between text-[9px] text-slate-500 mt-0.5">
+              <span>-28mm(深め床ベタ)</span>
+              <span>0mm(天板タッチ)</span>
+              <span>+28mm(浅め)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+          <label class="font-bold text-slate-200 block mb-1.5">5. クレーン初期奥行き（Z軸初期位置）</label>
+          <select id="cfg-z-start" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+            <option value="back" selected>図面通り（左奥スタート → ①横移動＋②手前移動）</option>
+            <option value="aligned">手前ライン一致スタート（①横移動のみで自動下降）</option>
+          </select>
+        </div>
+
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-2">
+          <label class="flex items-center justify-between cursor-pointer">
+            <span class="font-bold text-slate-200">2手目への「戻り揺れ」引き継ぎ</span>
+            <input type="checkbox" id="cfg-carry-sway" checked class="w-4 h-4 accent-pink-500">
+          </label>
+          <label class="flex items-center justify-between cursor-pointer">
+            <span class="font-bold text-slate-200">🤖 AI攻略アナライザーの自動表示</span>
+            <input type="checkbox" id="cfg-ai-analyzer" class="w-4 h-4 accent-indigo-500">
+          </label>
+          <div class="pt-1 border-t border-slate-800 flex items-center justify-between">
+            <span class="font-bold text-cyan-300">🏆 獲得GET演出画面の確認</span>
+            <button id="preview-win-modal-btn" class="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/60 text-[11px] font-bold text-cyan-200 transition">
+              GET画面をプレビュー
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/90 p-3.5 rounded-xl border border-amber-500/40 space-y-2">
+          <div class="font-black text-amber-300">📖 実機Oリング×？フック 攻略ポイント</div>
+          <div class="text-[11px] text-slate-300 leading-relaxed space-y-1.5">
+            <p><strong class="text-cyan-300">① 横の周期を使う（基本攻略）</strong><br>
+            フックの<strong>空いていない側（右空きなら左側）</strong>を基準に降ろし、Oリングが<strong>空いている側（右側）へスイングする周期</strong>に合わせて②ボタンを離して開口部へ滑り込ませます。</p>
+            <p><strong class="text-emerald-300">② 下降量設定による挙動の違い</strong><br>
+            下降量が「浅め（地面スレスレ）」の台では真上に降ろすだけでそのまま掛かります。「深め（床ベタ）」の台では天板に当たってリングが傾くため、フックの頭に当てて滑らせるか横周期でフトコロへ入れます。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== ボトムコントロールパネル（2ボタン実機仕様・スマホ下部UI完全回避） ==================== -->
+  <footer id="bottom-footer" class="glass-panel mobile-safe-footer z-30 px-3 pt-2 border-t border-slate-800 shrink-0">
+    <div class="max-w-lg mx-auto flex items-center justify-center">
+
+      <!-- ---------- パネルA: 2ボタン操作モード（中央を空けてスマホ中央アイコンも回避） ---------- -->
+      <div id="panel-3btn" class="grid grid-cols-2 gap-12 sm:gap-8 w-full">
+        <button id="btn-right" class="arcade-btn btn-pink h-12 sm:h-13 rounded-xl flex flex-col items-center justify-center text-white font-black">
+          <span class="text-xs sm:text-sm tracking-wider">① 右移動</span>
+          <span class="text-[9px] font-normal opacity-95">長押しで右へ</span>
+        </button>
+
+        <button id="btn-depth" disabled class="arcade-btn btn-cyan h-12 sm:h-13 rounded-xl flex flex-col items-center justify-center text-white font-black">
+          <span class="text-xs sm:text-sm tracking-wider">② 手前移動</span>
+          <span class="text-[9px] font-normal opacity-95">離すと自動下降</span>
+        </button>
+      </div>
+
+      <!-- ---------- パネルB: レバー自由操作モード (20秒) ---------- -->
+      <div id="panel-lever" class="hidden flex items-center justify-between gap-2 w-full">
+        <div class="bg-slate-900 px-2 py-1 rounded-lg border border-slate-700 text-center shrink-0">
+          <div class="text-[8px] text-slate-400">残り</div>
+          <div id="lever-timer" class="text-xs sm:text-sm font-mono font-black text-cyan-300">20.0s</div>
+        </div>
+
+        <div class="flex items-center gap-1">
+          <button id="joy-left" class="px-2.5 py-2 rounded-lg bg-slate-800 active:bg-pink-600 border border-slate-600 font-black text-xs">◀</button>
+          <div class="flex flex-col gap-0.5">
+            <button id="joy-back" class="px-2.5 py-0.5 rounded bg-slate-800 active:bg-cyan-600 border border-slate-600 font-black text-[9px]">▲奥</button>
+            <button id="joy-front" class="px-2.5 py-0.5 rounded bg-slate-800 active:bg-cyan-600 border border-slate-600 font-black text-[9px]">▼前</button>
+          </div>
+          <button id="joy-right" class="px-2.5 py-2 rounded-lg bg-slate-800 active:bg-pink-600 border border-slate-600 font-black text-xs">▶</button>
+        </div>
+
+        <button id="lever-drop-btn" class="arcade-btn btn-emerald flex-1 h-11 rounded-xl font-black text-xs text-white">
+          下降スタート
+        </button>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- ==================== シミュレーションスクリプト ==================== -->
+  <script>
+    // ============================================================================
+    // 1. Web Audio API シンセサイザー効果音エンジン
+    // ============================================================================
+    class ArcadeSoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+        this.motorOsc = null;
+        this.motorGain = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      startMotor(freq = 138) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        this.stopMotor();
+        try {
+          this.motorOsc = this.ctx.createOscillator();
+          this.motorGain = this.ctx.createGain();
+          this.motorOsc.type = 'sawtooth';
+          this.motorOsc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          this.motorGain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+          this.motorOsc.connect(this.motorGain);
+          this.motorGain.connect(this.ctx.destination);
+          this.motorOsc.start();
+        } catch (e) {}
+      }
+      stopMotor() {
+        if (this.motorOsc) {
+          try { this.motorOsc.stop(); this.motorOsc.disconnect(); } catch (e) {}
+          this.motorOsc = null;
+        }
+      }
+      click(high = true) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(high ? 880 : 540, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.065);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.065);
+      }
+      stopBeep() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        [1046.5, 1318.5].forEach((f, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, now + i * 0.045);
+          gain.gain.setValueAtTime(0.09, now + i * 0.045);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.045 + 0.09);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + i * 0.045);
+          osc.stop(now + i * 0.045 + 0.09);
+        });
+      }
+      clang(intensity = 1.0) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        [1520, 2340, 3680].forEach((f) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f + (Math.random() - 0.5) * 80, now);
+          gain.gain.setValueAtTime(Math.min(0.11, 0.045 * intensity), now);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.19);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.19);
+        });
+      }
+      sharin() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        [1760, 2217, 2637].forEach((f, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, now + idx * 0.03);
+          gain.gain.setValueAtTime(0.06, now + idx * 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.03 + 0.22);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.03);
+          osc.stop(now + idx * 0.03 + 0.22);
+        });
+      }
+      fanfare() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98];
+        notes.forEach((f, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          const t = this.ctx.currentTime + i * 0.09;
+          osc.frequency.setValueAtTime(f, t);
+          gain.gain.setValueAtTime(0.13, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.42);
+        });
+      }
+    }
+    const sfx = new ArcadeSoundEngine();
+
+    // ============================================================================
+    // 2. シミュレーション設定＆定数
+    // ============================================================================
+    const CONFIG = {
+      controlMode: '3btn',      // '3btn' (2ボタン式) | 'lever'
+      hookDir: 'front',         // 'front' (手前開口・実機標準) | 'right' | 'left' | 'back'
+      climaxSlowScale: 0.52,    // フック接近〜引っ掛かり時のスロー再生倍率
+      hookGapMode: 'normal',    // 'wide' | 'normal' | 'tight'
+      dropFloorMode: 'normal',  // 'just' | 'normal' | 'deep' | 'shallow_ng'
+      dropClearanceMm: -6,      // 天板基準の停止高さ(mm): 正=天板より上で停止, 負=天板接地後にチェーンを繰り出す量
+      zStartMode: 'back',       // 'back' | 'aligned'
+      carryOverSway: true,
+      showAIAnalyzer: false,    // スマホで邪魔にならないよう初期OFF
+
+      // フィールド座標系
+      homeX: -1.35,
+      maxX: 1.55,
+      homeZStandard: -0.92,
+      maxZ: 0.95,
+      craneY: 2.09,             // チェーン1.4倍化に合わせてクレーン天井高を最適化
+
+      // 多層ターゲット＆？型フック配置座標
+      targetX: 0.48,
+      targetZ: 0.42,
+
+      craneSpeed: 0.80,
+      dropSpeed: 0.44,
+      liftSpeed: 0.46,
+
+      // ① クレーン側の真円Oリング寸法 ＆ チェーン長1.4倍設定
+      baseChainLength: 0.73,    // 従来0.52 × 1.4倍 = 0.728m
+      liftWinPullM: 0.45,       // 1.4倍チェーンでも確実にターゲットを吊り上げきる巻き上げ上限
+      ringRadius: 0.21,
+      ringTubeR: 0.015,
+
+      // ？型フック寸法
+      hookStemH: 0.13,
+      hookLoopR: 0.148,
+      hookWireR: 0.017,
+      hookGapDeg: 62,
+
+      // ③ 実機準拠の連成二重振り子物理パラメータ
+      gravity: 16.8,
+      ringFlutterFreq: 13.5,
+      damping: 0.9972,
+      flutterDamping: 0.968,
+      swayGain: 1.35
+    };
+
+    // ============================================================================
+    // 3. ステート管理
+    // ============================================================================
+    const STATE = {
+      READY_X: 'READY_X',
+      MOVING_X: 'MOVING_X',
+      READY_Z: 'READY_Z',
+      MOVING_Z: 'MOVING_Z',
+      LEVER_FREE: 'LEVER_FREE',
+      WAIT_DESCENT: 'WAIT_DESCENT',
+      DROPPING: 'DROPPING',
+      SETTLING: 'SETTLING',
+      LIFTING: 'LIFTING',
+      RETURNING: 'RETURNING',
+      CELEBRATING: 'CELEBRATING'
+    };
+
+    let currentState = STATE.READY_X;
+    let credits = 99;
+    let wins = 0;
+    let leverTimer = 20.0;
+    let sessionToken = 0;
+    let isAutoPlay = false;
+    let autoTargetX = 0;
+    let autoTargetZ = 0;
+    const leverInput = { left: false, right: false, back: false, front: false };
+
+    const crane = {
+      x: CONFIG.homeX,
+      z: CONFIG.homeZStandard,
+      prevX: CONFIG.homeX,
+      prevZ: CONFIG.homeZStandard,
+      vx: 0,
+      vz: 0,
+      prevVx: 0,
+      prevVz: 0,
+      payOut: CONFIG.baseChainLength,
+      minPayOut: CONFIG.baseChainLength,
+      prevPayOut: CONFIG.baseChainLength
+    };
+
+    const ringPhys = {
+      pos: new THREE.Vector3(),
+      quat: new THREE.Quaternion(),
+      vel: new THREE.Vector3(),
+      angVel: new THREE.Vector3(),
+      targetLiftY: 0,
+      targetVelY: 0,
+      linked: false,
+      inHookCavity: false,
+      hookedLocked: false,
+      biteDepth: 0,        // フック懐への食い込み深さ
+      slippedOff: false,   // 巻き上げ途中で先端からツルッと滑落したか
+      contactHookIdx: -1,  // 現在接触しているフック曲線ノード番号
+      prizeDropped: false,
+      prizeDropVelY: 0,
+      prizeTiltX: 0,
+      prizeTiltZ: 0,
+      liftProgress: 0,
+      ropeSlack: 0,
+      slackAmount: 0,
+      statusText: '待機中',
+      telemetry: {
+        stoppedManually: false,
+        stopClearanceMm: 999,
+        hitBoardFloor: false,
+        enteredCavity: false,
+        hitTopDome: false,
+        slidSpine: false,
+        slippedOnLift: false,
+        dxAtOpening: 0,
+        dzAtOpening: 0
+      }
+    };
+
+    // ============================================================================
+    // 4. Three.js シーン・レンダラー・マルチカメラ初期化
+    // ============================================================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x131b26);
+
+    const initW = Math.max(container.clientWidth || window.innerWidth, 320);
+    const initH = Math.max(container.clientHeight || (window.innerHeight - 120), 240);
+
+    const mainCamera = new THREE.PerspectiveCamera(40, initW / initH, 0.1, 100);
+
+    // ② SIDE CAM: 平行投影カメラ（クレーン・チェーン・真円リング・？フックを真横から全域連動表示）
+    const pipSideAspect = 228 / 152;
+    const pipSideCam = new THREE.OrthographicCamera(-1.2 * pipSideAspect, 1.2 * pipSideAspect, 1.2, -1.2, 0.05, 30);
+    let sideCamMode = 'auto'; // 'auto' | 'wide' | 'zoom'
+    const sideCamView = { centerZ: 0.0, centerY: 0.55, halfH: 1.25 };
+
+    // ワイプ2: FRONT ZOOM: フック正面クローズアップカメラ
+    const pipFrontCam = new THREE.PerspectiveCamera(28, 228 / 152, 0.05, 30);
+    // スマホ・PCでのワイプ表示モード ('auto1': 自動1枠切替, 'both': 2枠同時, 'off': 非表示)
+    let pipDisplayMode = window.innerWidth < 640 ? 'auto1' : 'both';
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(initW, initH);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.autoClear = false;
+    container.appendChild(renderer.domElement);
+
+    // 照明
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.78);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.15);
+    dirLight.position.set(2.2, 4.5, 2.8);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    scene.add(dirLight);
+
+    const rimLight = new THREE.PointLight(0xec4899, 0.45, 9);
+    rimLight.position.set(-2.0, 2.2, -1.5);
+    scene.add(rimLight);
+
+    // ============================================================================
+    // 5. マテリアル定義
+    // ============================================================================
+    const matDarkFloor = new THREE.MeshStandardMaterial({ color: 0x18222f, roughness: 0.85, metalness: 0.1 });
+    const matWhiteFrame = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3, metalness: 0.1 });
+    const matPinkStripe = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.25, metalness: 0.15, emissive: 0xec4899, emissiveIntensity: 0.12 });
+    const matBridgeBar = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.22, metalness: 0.85 });
+    const matGreenWeight = new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.4, metalness: 0.1 });
+    const matPinkPlate = new THREE.MeshStandardMaterial({ color: 0xf9a8d4, roughness: 0.35, metalness: 0.1 });
+    const matBeigeBoard = new THREE.MeshStandardMaterial({ color: 0xe7d3a8, roughness: 0.6, metalness: 0.05 });
+    const matGoldHook = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.15, metalness: 0.92 });
+    const matSilverRing = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.12, metalness: 0.94 });
+
+    // ============================================================================
+    // 6. 図面完全準拠の筐体・つっぱり棒・多層ターゲット・？型フック構築
+    // ============================================================================
+    const floorGroup = new THREE.Group();
+    scene.add(floorGroup);
+
+    const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 3.3), matDarkFloor);
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.position.y = -0.55;
+    floorMesh.receiveShadow = true;
+    floorGroup.add(floorMesh);
+
+    const gridHelper = new THREE.GridHelper(4.2, 12, 0x2dd4bf, 0x243242);
+    gridHelper.position.y = -0.545;
+    gridHelper.material.opacity = 0.32;
+    gridHelper.material.transparent = true;
+    floorGroup.add(gridHelper);
+
+    const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(4.36, 0.06, 3.26), matWhiteFrame);
+    outerFrame.position.y = -0.56;
+    floorGroup.add(outerFrame);
+
+    const innerPinkFrame = new THREE.Mesh(new THREE.BoxGeometry(4.24, 0.07, 3.14), matPinkStripe);
+    innerPinkFrame.position.y = -0.555;
+    floorGroup.add(innerPinkFrame);
+
+    const innerCutout = new THREE.Mesh(new THREE.BoxGeometry(4.12, 0.08, 3.02), matDarkFloor);
+    innerCutout.position.y = -0.55;
+    floorGroup.add(innerCutout);
+
+    // 手前の白い支柱（左・右）と水平つっぱり棒（ブリッジバー）
+    const BRIDGE_Y = -0.22;
+    const BRIDGE_Z = CONFIG.targetZ;
+
+    const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.56, 0.32), matWhiteFrame);
+    leftPillar.position.set(-1.55, BRIDGE_Y, BRIDGE_Z);
+    leftPillar.castShadow = true;
+    scene.add(leftPillar);
+
+    const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.56, 0.32), matWhiteFrame);
+    rightPillar.position.set(1.55, BRIDGE_Y, BRIDGE_Z);
+    rightPillar.castShadow = true;
+    scene.add(rightPillar);
+
+    const bridgeBar = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 3.1, 24), matBridgeBar);
+    bridgeBar.rotation.z = Math.PI / 2;
+    bridgeBar.position.set(0, BRIDGE_Y, BRIDGE_Z);
+    bridgeBar.castShadow = true;
+    scene.add(bridgeBar);
+
+    // 多層ターゲットユニット（つっぱり棒の上に載り、フックが引かれると一体で持ち上がる）
+    // ※ 台座プレートを一回り広く拡張し、斜め着地時の安定性と視認性を向上
+    const BOARD_HALF_X = 0.52; // 幅 1.04m (旧 0.74m)
+    const BOARD_HALF_Z = 0.31; // 奥行 0.62m (旧 0.40m)
+
+    const targetAssembly = new THREE.Group();
+    targetAssembly.position.set(CONFIG.targetX, BRIDGE_Y, CONFIG.targetZ);
+    scene.add(targetAssembly);
+
+    const lowerWhiteTray = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.030, 0.84), matWhiteFrame);
+    lowerWhiteTray.position.set(0, -0.17, 0);
+    lowerWhiteTray.castShadow = true;
+    targetAssembly.add(lowerWhiteTray);
+
+    const greenBlock = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.12, 0.72), matGreenWeight);
+    greenBlock.position.set(0, -0.095, 0);
+    greenBlock.castShadow = true;
+    targetAssembly.add(greenBlock);
+
+    const centerBolt = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.24, 16), matGoldHook);
+    centerBolt.position.set(0, 0.0, 0);
+    targetAssembly.add(centerBolt);
+
+    const pinkPlate = new THREE.Mesh(new THREE.BoxGeometry(1.10, 0.045, 0.66), matPinkPlate);
+    pinkPlate.position.set(0, 0.055, 0);
+    pinkPlate.castShadow = true;
+    targetAssembly.add(pinkPlate);
+
+    const beigeBoard = new THREE.Mesh(new THREE.BoxGeometry(BOARD_HALF_X * 2, 0.055, BOARD_HALF_Z * 2), matBeigeBoard);
+    beigeBoard.position.set(0, 0.105, 0);
+    beigeBoard.castShadow = true;
+    beigeBoard.receiveShadow = true;
+    targetAssembly.add(beigeBoard);
+
+    const BOARD_TOP_LOCAL_Y = 0.1325;
+
+    // ？型フック（洋灯吊金具）の3D構築＆衝突用3D曲線ノード保持（前・後ろ・左・右の4方向対応）
+    const questionHookGroup = new THREE.Group();
+    questionHookGroup.position.set(0, BOARD_TOP_LOCAL_Y, 0);
+    targetAssembly.add(questionHookGroup);
+
+    let hookMesh = null;
+    let hookTipSphere = null;
+    let hookCurveLocalPts = []; // ターゲット基準の3Dフック曲線ポイント配列（回転適用済み）
+    const hookBound = { cx: 0, cy: 0, cz: 0, r: 0.35 };
+    const hookSegHalf = [];
+
+    function updateHookBounding() {
+      const pts = hookCurveLocalPts;
+      if (!pts || pts.length === 0) return;
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      let minZ = Infinity, maxZ = -Infinity;
+      hookSegHalf.length = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+        if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+        if (i < pts.length - 1) {
+          const np = pts[i + 1];
+          const half = 0.5 * Math.hypot(np.x - p.x, np.y - p.y, np.z - p.z);
+          hookSegHalf.push(half);
+        }
+      }
+      hookBound.cx = (minX + maxX) * 0.5;
+      hookBound.cy = (minY + maxY) * 0.5;
+      hookBound.cz = (minZ + maxZ) * 0.5;
+      let maxDist = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        const d = Math.hypot(p.x - hookBound.cx, p.y - hookBound.cy, p.z - hookBound.cz);
+        if (d > maxDist) maxDist = d;
+      }
+      hookBound.r = maxDist;
+    }
+
+    // フックの開口部方向ベクトル（右:+X, 左:-X, 前:+Z, 後ろ:-Z）を取得
+    function getHookOpenVector() {
+      if (CONFIG.hookDir === 'right') return { x: 1, z: 0, rotY: 0, label: '右向き(右空き)' };
+      if (CONFIG.hookDir === 'left')  return { x: -1, z: 0, rotY: Math.PI, label: '左向き(左空き)' };
+      if (CONFIG.hookDir === 'front') return { x: 0, z: 1, rotY: -Math.PI / 2, label: '前向き(手前空き)' };
+      return { x: 0, z: -1, rotY: Math.PI / 2, label: '後ろ向き(奥空き)' };
+    }
+
+    function rebuildQuestionHook() {
+      while (questionHookGroup.children.length > 0) {
+        questionHookGroup.remove(questionHookGroup.children[0]);
+      }
+
+      if (CONFIG.hookGapMode === 'wide') CONFIG.hookGapDeg = 82;
+      else if (CONFIG.hookGapMode === 'normal') CONFIG.hookGapDeg = 62;
+      else CONFIG.hookGapDeg = 42;
+
+      const washer = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.016, 20), matGoldHook);
+      washer.position.y = 0.008;
+      questionHookGroup.add(washer);
+
+      const stemH = CONFIG.hookStemH;
+      const loopR = CONFIG.hookLoopR;
+      const wireR = CONFIG.hookWireR;
+      const openVec = getHookOpenVector();
+
+      // 基本形状は +X 側が開口部になるように生成し、Y軸回転で4方向（右・左・前・後ろ）へ展開
+      const basePoints = [];
+      basePoints.push(new THREE.Vector3(0, 0, 0));
+      basePoints.push(new THREE.Vector3(0, stemH * 0.65, 0));
+      basePoints.push(new THREE.Vector3(0, stemH, 0));
+
+      const startAngle = -Math.PI / 2;
+      const sweepRad = THREE.MathUtils.degToRad(360 - CONFIG.hookGapDeg);
+      const segments = 36;
+
+      for (let i = 1; i <= segments; i++) {
+        const t = i / segments;
+        const theta = startAngle - sweepRad * t;
+        const px = Math.cos(theta) * loopR;
+        const py = stemH + loopR + Math.sin(theta) * loopR;
+        basePoints.push(new THREE.Vector3(px, py, 0));
+      }
+
+      const rotEuler = new THREE.Euler(0, openVec.rotY, 0);
+      const rotatedPoints = basePoints.map((pt) => pt.clone().applyEuler(rotEuler));
+
+      const curve = new THREE.CatmullRomCurve3(rotatedPoints);
+      hookCurveLocalPts = curve.getPoints(48);
+      updateHookBounding();
+
+      const tubeGeo = new THREE.TubeGeometry(curve, 64, wireR, 16, false);
+      hookMesh = new THREE.Mesh(tubeGeo, matGoldHook);
+      hookMesh.castShadow = true;
+      questionHookGroup.add(hookMesh);
+
+      const tipPt = rotatedPoints[rotatedPoints.length - 1];
+      hookTipSphere = new THREE.Mesh(new THREE.SphereGeometry(wireR * 1.15, 16, 16), matGoldHook);
+      hookTipSphere.position.copy(tipPt);
+      questionHookGroup.add(hookTipSphere);
+
+      const openLabel = document.getElementById('hook-open-label');
+      const sweetZoneBar = document.getElementById('phase-sweet-zone');
+      if (CONFIG.hookDir === 'right' || CONFIG.hookDir === 'front') {
+        openLabel.textContent = `★${openVec.label}`;
+        sweetZoneBar.style.right = '4px';
+        sweetZoneBar.style.left = 'auto';
+      } else {
+        openLabel.textContent = `★${openVec.label}`;
+        sweetZoneBar.style.left = '4px';
+        sweetZoneBar.style.right = 'auto';
+      }
+    }
+    rebuildQuestionHook();
+
+    // ============================================================================
+    // 7. 図面通りのクレーン本体（白ボックス＋ピンク帯＋上部ネジ）＆完全な真円Oリング構築
+    // ============================================================================
+    const carriageGroup = new THREE.Group();
+    carriageGroup.position.set(crane.x, CONFIG.craneY, crane.z);
+    scene.add(carriageGroup);
+
+    const topScrew = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.14, 20), matBridgeBar);
+    topScrew.position.y = 0.22;
+    carriageGroup.add(topScrew);
+
+    const whiteBox = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.30, 0.38), matWhiteFrame);
+    whiteBox.castShadow = true;
+    carriageGroup.add(whiteBox);
+
+    const pinkStripeBox = new THREE.Mesh(new THREE.BoxGeometry(0.51, 0.095, 0.39), matPinkStripe);
+    carriageGroup.add(pinkStripeBox);
+
+    // 25連金属ボールチェーン（従来18連 × 1.4倍 ＝ 25連）
+    const CHAIN_COUNT = 25;
+    const chainLinks = [];
+    const linkGeo = new THREE.SphereGeometry(0.016, 10, 10);
+    for (let i = 0; i < CHAIN_COUNT; i++) {
+      const link = new THREE.Mesh(linkGeo, matSilverRing);
+      link.castShadow = true;
+      scene.add(link);
+      chainLinks.push(link);
+    }
+
+    // ① クレーン側の真円Oリング（完全な1:1真円トーラス＋上端アイレット金具）
+    const ringGroup = new THREE.Group();
+    scene.add(ringGroup);
+
+    const circleRingGeo = new THREE.TorusGeometry(CONFIG.ringRadius, CONFIG.ringTubeR, 20, 64);
+    const circleRingMesh = new THREE.Mesh(circleRingGeo, matSilverRing);
+    circleRingMesh.castShadow = true;
+    ringGroup.add(circleRingMesh);
+
+    const ringTopEyelet = new THREE.Mesh(
+      new THREE.TorusGeometry(0.024, 0.007, 10, 20),
+      matSilverRing
+    );
+    ringTopEyelet.position.y = CONFIG.ringRadius + 0.018;
+    ringTopEyelet.rotation.y = Math.PI / 2;
+    ringGroup.add(ringTopEyelet);
+
+    // ============================================================================
+    // 8. カメラアングル制御 ＆ ワイプ表示切替
+    // ============================================================================
+    let currentCamPreset = 'front';
+    const camOrbit = {
+      theta: 0.0,
+      phi: 0.20,
+      radius: 3.85,
+      target: new THREE.Vector3(-0.15, 0.45, 0.0),
+      isDragging: false,
+      lastX: 0,
+      lastY: 0
+    };
+
+    function applyMainCamera() {
+      const aspect = (container.clientWidth || window.innerWidth) / Math.max(1, container.clientHeight || window.innerHeight);
+      const portraitZoomOut = aspect < 0.75 ? (0.75 / Math.max(0.42, aspect)) * 1.18 : 1.0;
+
+      if (currentCamPreset === 'diagram') {
+        mainCamera.position.set(0.0, 4.35 * portraitZoomOut, 0.01);
+        mainCamera.lookAt(0.0, 0.0, 0.0);
+        return;
+      }
+      const effRadius = camOrbit.radius * portraitZoomOut;
+      const x = camOrbit.target.x + effRadius * Math.sin(camOrbit.theta) * Math.cos(camOrbit.phi);
+      const y = camOrbit.target.y + effRadius * Math.sin(camOrbit.phi);
+      const z = camOrbit.target.z + effRadius * Math.cos(camOrbit.theta) * Math.cos(camOrbit.phi);
+      mainCamera.position.set(x, y, z);
+      mainCamera.lookAt(camOrbit.target);
+    }
+
+    function setCameraPreset(preset) {
+      currentCamPreset = preset;
+      document.querySelectorAll('.cam-btn').forEach((b) => {
+        if (b.dataset.cam === preset) {
+          b.className = 'cam-btn px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-600 text-white transition';
+        } else {
+          b.className = 'cam-btn px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-300 hover:text-white transition';
+        }
+      });
+
+      if (preset === 'front') {
+        camOrbit.theta = 0.0;
+        camOrbit.phi = 0.16;
+        camOrbit.radius = 3.85;
+        camOrbit.target.set(-0.1, 0.42, 0.0);
+      } else if (preset === 'side') {
+        camOrbit.theta = Math.PI / 2;
+        camOrbit.phi = 0.12;
+        camOrbit.radius = 2.95;
+        camOrbit.target.set(CONFIG.targetX, 0.25, 0.0);
+      } else if (preset === 'closeup') {
+        camOrbit.theta = 0.18;
+        camOrbit.phi = 0.16;
+        camOrbit.radius = 1.42;
+        camOrbit.target.set(CONFIG.targetX, 0.12, CONFIG.targetZ);
+      }
+      applyMainCamera();
+    }
+    setCameraPreset('front');
+
+    document.querySelectorAll('.cam-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        sfx.click();
+        setCameraPreset(btn.dataset.cam);
+      });
+    });
+
+    const sideCamModeBtn = document.getElementById('side-cam-mode-btn');
+    sideCamModeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sfx.click();
+      if (sideCamMode === 'auto') {
+        sideCamMode = 'wide';
+        sideCamModeBtn.textContent = '全体';
+      } else if (sideCamMode === 'wide') {
+        sideCamMode = 'zoom';
+        sideCamModeBtn.textContent = '拡大';
+      } else {
+        sideCamMode = 'auto';
+        sideCamModeBtn.textContent = 'AUTO';
+      }
+    });
+
+    const togglePipBtn = document.getElementById('toggle-pip-btn');
+    function updatePipVisibility() {
+      const sideBox = document.getElementById('side-cam-box');
+      const frontBox = document.getElementById('front-cam-box');
+      if (!sideBox || !frontBox) return;
+
+      if (pipDisplayMode === 'off') {
+        sideBox.classList.add('hidden');
+        frontBox.classList.add('hidden');
+        togglePipBtn.textContent = '📺OFF';
+      } else if (pipDisplayMode === 'both') {
+        sideBox.classList.remove('hidden');
+        frontBox.classList.remove('hidden');
+        togglePipBtn.textContent = '📺2枠';
+      } else {
+        togglePipBtn.textContent = '📺自動';
+        const showFrontZoom = currentState === STATE.DROPPING || currentState === STATE.SETTLING || currentState === STATE.LIFTING;
+        if (showFrontZoom) {
+          sideBox.classList.add('hidden');
+          frontBox.classList.remove('hidden');
+        } else {
+          sideBox.classList.remove('hidden');
+          frontBox.classList.add('hidden');
+        }
+      }
+    }
+    togglePipBtn.addEventListener('click', () => {
+      sfx.click();
+      if (pipDisplayMode === 'auto1') pipDisplayMode = 'both';
+      else if (pipDisplayMode === 'both') pipDisplayMode = 'off';
+      else pipDisplayMode = 'auto1';
+      updatePipVisibility();
+    });
+    updatePipVisibility();
+
+    container.addEventListener('pointerdown', (e) => {
+      if (currentCamPreset === 'diagram') return;
+      camOrbit.isDragging = true;
+      camOrbit.lastX = e.clientX;
+      camOrbit.lastY = e.clientY;
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!camOrbit.isDragging) return;
+      const dx = e.clientX - camOrbit.lastX;
+      const dy = e.clientY - camOrbit.lastY;
+      camOrbit.lastX = e.clientX;
+      camOrbit.lastY = e.clientY;
+      camOrbit.theta -= dx * 0.0065;
+      camOrbit.phi = THREE.MathUtils.clamp(camOrbit.phi + dy * 0.0055, -0.05, 1.25);
+      applyMainCamera();
+    });
+    window.addEventListener('pointerup', () => { camOrbit.isDragging = false; });
+    container.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      camOrbit.radius = THREE.MathUtils.clamp(camOrbit.radius + e.deltaY * 0.0025, 1.0, 6.2);
+      applyMainCamera();
+    }, { passive: false });
+
+    // ============================================================================
+    // 9. XPBD（拡張位置ベース動力学）剛体Oリング × ？型フック 非貫通物理
+    //    - Oリング：位置・姿勢（クォータニオン）・速度・角速度を持つ剛体。補正後の位置をそのまま次の状態に使う
+    //    - チェーン：たるみ可能なロープ拘束（距離 ≤ チェーン長）。床に着くとたるみ、リングは重力で自然に倒れる
+    //    - ？フック：リング中心円 × フック中心折れ線（カプセル）の最近接距離を反復射影で厳密計算（サンプル隙間なし）
+    //    - 台座・段差・つっぱり棒・床：線材球 × ボックス/円柱の非貫通拘束＋クーロン摩擦
+    //    - ターゲット：上下方向にのみ動く剛体。フック内側に掛かったリングのチェーン張力で「実際に」持ち上がる
+    // ============================================================================
+    function getBoardWorldTopY() {
+      return BRIDGE_Y + ringPhys.targetLiftY + BOARD_TOP_LOCAL_Y;
+    }
+
+    const PHYS_SUBSTEPS = 20;
+    const PHYS_ITERS = 2;
+    const RING_R = CONFIG.ringRadius;
+    const RING_TUBE = CONFIG.ringTubeR;
+    const HOOK_CONTACT_DIST = CONFIG.ringTubeR + CONFIG.hookWireR; // 線材同士が接する中心線間距離
+    const RING_MASS = 1.0;
+    const RING_INV_MASS = 1 / RING_MASS;
+    const RING_INV_I_DIAM = 1 / (0.5 * RING_MASS * RING_R * RING_R); // 直径軸まわり
+    const RING_INV_I_AXIS = 1 / (RING_MASS * RING_R * RING_R);       // リング面法線軸まわり
+    const RING_ATTACH_Y = RING_R + 0.024;                             // リング中心→上端アイレット（チェーン接続点）
+    const TARGET_INV_MASS = 1 / 6.0;
+    const TARGET_GRAVITY = 9.8;
+    const PRIZE_FLOOR_LIFT = -0.26;
+    const FLOOR_Y = -0.53;
+    const RING_SAMPLE_COUNT = 64;
+    const MU_HOOK = 0.12;
+    const MU_BOARD = 0.5;
+    const BAR_R = 0.032;
+    const BAR_HALF_LEN = 1.55;
+
+    // ターゲット（台座積層）のローカルボックス（targetAssembly基準）
+    const TARGET_BOXES = [
+      { cy: 0.105, hx: BOARD_HALF_X, hy: 0.0275, hz: BOARD_HALF_Z, top: true }, // ベージュ天板
+      { cy: 0.055, hx: 0.55, hy: 0.0225, hz: 0.33 },                             // ピンクプレート
+      { cy: -0.095, hx: 0.63, hy: 0.06, hz: 0.36 },                              // 緑ブロック
+      { cy: -0.17, hx: 0.74, hy: 0.015, hz: 0.42 }                               // 白トレイ
+    ];
+    // 固定構造物（左右の白支柱）
+    const STATIC_BOXES = [
+      { cx: -1.55, cy: BRIDGE_Y, cz: BRIDGE_Z, hx: 0.07, hy: 0.28, hz: 0.16 },
+      { cx: 1.55, cy: BRIDGE_Y, cz: BRIDGE_Z, hx: 0.07, hy: 0.28, hz: 0.16 }
+    ];
+
+    ringPhys.quat = new THREE.Quaternion();
+    ringPhys.vel = new THREE.Vector3();
+    ringPhys.angVel = new THREE.Vector3();
+    ringPhys.targetVelY = 0;
+    ringPhys.linked = false;
+    ringPhys.hookNotified = false;
+    ringPhys.ropeSlack = 0;
+
+    const _prevPos = new THREE.Vector3();
+    const _prevQuat = new THREE.Quaternion();
+    const _dq = new THREE.Quaternion();
+    const _ax = new THREE.Vector3();
+    const _ay = new THREE.Vector3();
+    const _az = new THREE.Vector3();
+    const _yAxis = new THREE.Vector3(0, 1, 0);
+    const _tmpI = { x: 0, y: 0, z: 0 };
+    const _cp = { x: 0, y: 0, z: 0 };
+    const _sp = { x: 0, y: 0, z: 0 };
+    const _boxRes = { nx: 0, ny: 0, nz: 0, pen: 0 };
+    const physAnchor = { x: 0, y: 0, z: 0, payOut: 0, init: false };
+    const contactPool = [];
+    let contactCount = 0;
+    let lastClangTime = 0;
+
+    // ---------- 剛体ユーティリティ ----------
+    function refreshRingAxes() {
+      const q = ringPhys.quat;
+      _ax.set(1, 0, 0).applyQuaternion(q);
+      _ay.set(0, 1, 0).applyQuaternion(q);
+      _az.set(0, 0, 1).applyQuaternion(q);
+    }
+
+    // ワールド慣性テンソルの逆行列 × ベクトル
+    function invInertiaMul(x, y, z, out) {
+      const lx = (x * _ax.x + y * _ax.y + z * _ax.z) * RING_INV_I_DIAM;
+      const ly = (x * _ay.x + y * _ay.y + z * _ay.z) * RING_INV_I_DIAM;
+      const lz = (x * _az.x + y * _az.y + z * _az.z) * RING_INV_I_AXIS;
+      out.x = _ax.x * lx + _ay.x * ly + _az.x * lz;
+      out.y = _ax.y * lx + _ay.y * ly + _az.y * lz;
+      out.z = _ax.z * lx + _ay.z * ly + _az.z * lz;
+      return out;
+    }
+
+    // 点 r（中心からの腕）における方向 n の一般化逆質量
+    function ringGenInvMass(rx, ry, rz, nx, ny, nz) {
+      const cx = ry * nz - rz * ny;
+      const cy = rz * nx - rx * nz;
+      const cz = rx * ny - ry * nx;
+      invInertiaMul(cx, cy, cz, _tmpI);
+      return RING_INV_MASS + cx * _tmpI.x + cy * _tmpI.y + cz * _tmpI.z;
+    }
+
+    function rotateRingBy(ox, oy, oz) {
+      const q = ringPhys.quat;
+      const qx = q.x, qy = q.y, qz = q.z, qw = q.w;
+      q.set(
+        qx + 0.5 * (ox * qw + oy * qz - oz * qy),
+        qy + 0.5 * (oy * qw + oz * qx - ox * qz),
+        qz + 0.5 * (oz * qw + ox * qy - oy * qx),
+        qw + 0.5 * (-ox * qx - oy * qy - oz * qz)
+      );
+      q.normalize();
+      refreshRingAxes();
+    }
+
+    function applyRingPositionalImpulse(px, py, pz, rx, ry, rz) {
+      const p = ringPhys.pos;
+      p.x += px * RING_INV_MASS;
+      p.y += py * RING_INV_MASS;
+      p.z += pz * RING_INV_MASS;
+      invInertiaMul(ry * pz - rz * py, rz * px - rx * pz, rx * py - ry * px, _tmpI);
+      rotateRingBy(_tmpI.x, _tmpI.y, _tmpI.z);
+    }
+
+    function applyRingVelocityImpulse(px, py, pz, rx, ry, rz) {
+      const v = ringPhys.vel;
+      v.x += px * RING_INV_MASS;
+      v.y += py * RING_INV_MASS;
+      v.z += pz * RING_INV_MASS;
+      invInertiaMul(ry * pz - rz * py, rz * px - rx * pz, rx * py - ry * px, _tmpI);
+      ringPhys.angVel.x += _tmpI.x;
+      ringPhys.angVel.y += _tmpI.y;
+      ringPhys.angVel.z += _tmpI.z;
+    }
+
+    // リング中心線（真円）上で点 p に最も近い点
+    function closestPointOnRing(px, py, pz, out) {
+      const c = ringPhys.pos;
+      let ux = px - c.x, uy = py - c.y, uz = pz - c.z;
+      const un = ux * _az.x + uy * _az.y + uz * _az.z;
+      ux -= un * _az.x; uy -= un * _az.y; uz -= un * _az.z;
+      let len = Math.sqrt(ux * ux + uy * uy + uz * uz);
+      if (len < 1e-9) { ux = _ax.x; uy = _ax.y; uz = _ax.z; len = 1; }
+      const s = RING_R / len;
+      out.x = c.x + ux * s;
+      out.y = c.y + uy * s;
+      out.z = c.z + uz * s;
+      return out;
+    }
+
+    function sampleRingPoint(k, out) {
+      const ang = (k / RING_SAMPLE_COUNT) * Math.PI * 2;
+      const ca = Math.cos(ang) * RING_R, sa = Math.sin(ang) * RING_R;
+      const c = ringPhys.pos;
+      out.x = c.x + _ax.x * ca + _ay.x * sa;
+      out.y = c.y + _ax.y * ca + _ay.y * sa;
+      out.z = c.z + _ax.z * ca + _ay.z * sa;
+      return out;
+    }
+
+    function recordContact(rx, ry, rz, nx, ny, nz, lambda, mu, withTarget) {
+      let c = contactPool[contactCount];
+      if (!c) { c = {}; contactPool[contactCount] = c; }
+      c.rx = rx; c.ry = ry; c.rz = rz;
+      c.nx = nx; c.ny = ny; c.nz = nz;
+      c.lambda = lambda; c.mu = mu; c.withTarget = withTarget;
+      contactCount++;
+    }
+
+    // 接触の位置補正（n: 相手→リングの押し出し方向、(cx,cy,cz): リング表面の接触点）
+    function resolveRingContact(cx, cy, cz, nx, ny, nz, pen, mu, targetMovable) {
+      const p = ringPhys.pos;
+      const rx = cx - p.x, ry = cy - p.y, rz = cz - p.z;
+      const w1 = ringGenInvMass(rx, ry, rz, nx, ny, nz);
+      // ターゲットは上下のみ可動。つっぱり棒に載って静止中に下へ押される場合は固定扱い（無駄な押し合いを防止）
+      let w2 = 0;
+      if (targetMovable && !(ringPhys.targetLiftY <= 1e-5 && ny > 0)) w2 = ny * ny * TARGET_INV_MASS;
+      const dl = pen / (w1 + w2);
+      applyRingPositionalImpulse(nx * dl, ny * dl, nz * dl, rx, ry, rz);
+      if (w2 > 0) ringPhys.targetLiftY -= ny * dl * TARGET_INV_MASS;
+      recordContact(rx, ry, rz, nx, ny, nz, dl, mu, w2 > 0);
+      return dl;
+    }
+
+    function sphereBoxContact(px, py, pz, rad, cx, cy, cz, hx, hy, hz, res) {
+      const lx = px - cx, ly = py - cy, lz = pz - cz;
+      if (Math.abs(lx) > hx + rad || Math.abs(ly) > hy + rad || Math.abs(lz) > hz + rad) return false;
+      const qx = Math.max(-hx, Math.min(hx, lx));
+      const qy = Math.max(-hy, Math.min(hy, ly));
+      const qz = Math.max(-hz, Math.min(hz, lz));
+      const dx = lx - qx, dy = ly - qy, dz = lz - qz;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > 1e-12) {
+        const d = Math.sqrt(d2);
+        if (d >= rad) return false;
+        res.nx = dx / d; res.ny = dy / d; res.nz = dz / d;
+        res.pen = rad - d;
+        return true;
+      }
+      // 球中心がボックス内部：最短の面から押し出す
+      const fx = hx - Math.abs(lx), fy = hy - Math.abs(ly), fz = hz - Math.abs(lz);
+      res.nx = 0; res.ny = 0; res.nz = 0;
+      if (fy <= fx && fy <= fz) { res.ny = ly >= 0 ? 1 : -1; res.pen = fy + rad; }
+      else if (fx <= fz) { res.nx = lx >= 0 ? 1 : -1; res.pen = fx + rad; }
+      else { res.nz = lz >= 0 ? 1 : -1; res.pen = fz + rad; }
+      return true;
+    }
+
+    // ---------- 拘束①：チェーン（たるみ可能なロープ） ----------
+    function solveRope() {
+      const p = ringPhys.pos;
+      const rx = _ay.x * RING_ATTACH_Y, ry = _ay.y * RING_ATTACH_Y, rz = _ay.z * RING_ATTACH_Y;
+      const dx = physAnchor.x - (p.x + rx);
+      const dy = physAnchor.y - (p.y + ry);
+      const dz = physAnchor.z - (p.z + rz);
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const L = physAnchor.payOut;
+      ringPhys.ropeSlack = Math.max(0, L - d);
+      ringPhys.slackAmount = ringPhys.ropeSlack;
+      if (d <= L || d < 1e-9) return;
+      const nx = dx / d, ny = dy / d, nz = dz / d;
+      const w = ringGenInvMass(rx, ry, rz, nx, ny, nz);
+      const dl = (d - L) / w;
+      applyRingPositionalImpulse(nx * dl, ny * dl, nz * dl, rx, ry, rz);
+    }
+
+    // ---------- 拘束②：台座積層・支柱・つっぱり棒・床 ----------
+    function solveStructureContacts(targetActive) {
+      const p = ringPhys.pos;
+      const ext = RING_R + RING_TUBE + 0.01;
+      const tX = CONFIG.targetX, tZ = CONFIG.targetZ;
+      const tBaseY = BRIDGE_Y + ringPhys.targetLiftY;
+      const nearTarget = targetActive &&
+        Math.abs(p.x - tX) < 0.74 + ext && Math.abs(p.z - tZ) < 0.42 + ext &&
+        p.y - ext < tBaseY + 0.14 && p.y + ext > tBaseY - 0.19;
+      const nearFloor = p.y - ext < FLOOR_Y;
+      const nearBar = Math.abs(p.z - BRIDGE_Z) < BAR_R + ext && Math.abs(p.y - BRIDGE_Y) < BAR_R + ext;
+      const nearPillar = Math.abs(Math.abs(p.x) - 1.55) < 0.07 + ext && Math.abs(p.z - BRIDGE_Z) < 0.16 + ext && p.y - ext < BRIDGE_Y + 0.28;
+      if (!nearTarget && !nearFloor && !nearBar && !nearPillar) return;
+
+      for (let k = 0; k < RING_SAMPLE_COUNT; k++) {
+        sampleRingPoint(k, _sp);
+
+        if (nearTarget) {
+          for (let b = 0; b < TARGET_BOXES.length; b++) {
+            const box = TARGET_BOXES[b];
+            const by = BRIDGE_Y + ringPhys.targetLiftY + box.cy;
+            if (sphereBoxContact(_sp.x, _sp.y, _sp.z, RING_TUBE, tX, by, tZ, box.hx, box.hy, box.hz, _boxRes)) {
+              resolveRingContact(
+                _sp.x - _boxRes.nx * RING_TUBE, _sp.y - _boxRes.ny * RING_TUBE, _sp.z - _boxRes.nz * RING_TUBE,
+                _boxRes.nx, _boxRes.ny, _boxRes.nz, _boxRes.pen, MU_BOARD, true
+              );
+              if (box.top && _boxRes.ny > 0.5 && (currentState === STATE.DROPPING || currentState === STATE.SETTLING)) {
+                ringPhys.telemetry.hitBoardFloor = true;
+              }
+              sampleRingPoint(k, _sp);
+            }
+          }
+        }
+
+        if (nearPillar) {
+          for (let b = 0; b < STATIC_BOXES.length; b++) {
+            const box = STATIC_BOXES[b];
+            if (sphereBoxContact(_sp.x, _sp.y, _sp.z, RING_TUBE, box.cx, box.cy, box.cz, box.hx, box.hy, box.hz, _boxRes)) {
+              resolveRingContact(
+                _sp.x - _boxRes.nx * RING_TUBE, _sp.y - _boxRes.ny * RING_TUBE, _sp.z - _boxRes.nz * RING_TUBE,
+                _boxRes.nx, _boxRes.ny, _boxRes.nz, _boxRes.pen, MU_BOARD, false
+              );
+              sampleRingPoint(k, _sp);
+            }
+          }
+        }
+
+        if (nearBar && Math.abs(_sp.x) < BAR_HALF_LEN) {
+          const dy = _sp.y - BRIDGE_Y, dz = _sp.z - BRIDGE_Z;
+          const d = Math.sqrt(dy * dy + dz * dz);
+          if (d < BAR_R + RING_TUBE && d > 1e-9) {
+            const ny = dy / d, nz = dz / d;
+            resolveRingContact(_sp.x, _sp.y - ny * RING_TUBE, _sp.z - nz * RING_TUBE, 0, ny, nz, BAR_R + RING_TUBE - d, MU_BOARD, false);
+            sampleRingPoint(k, _sp);
+          }
+        }
+
+        if (nearFloor && _sp.y - RING_TUBE < FLOOR_Y) {
+          resolveRingContact(_sp.x, _sp.y - RING_TUBE, _sp.z, 0, 1, 0, FLOOR_Y - (_sp.y - RING_TUBE), MU_BOARD, false);
+        }
+      }
+    }
+
+    // ---------- 拘束③：？型フック（円 × カプセル折れ線の厳密非貫通） ----------
+    function solveHookContacts() {
+      const p = ringPhys.pos;
+      const tX = CONFIG.targetX, tZ = CONFIG.targetZ;
+      let baseY = BRIDGE_Y + ringPhys.targetLiftY + BOARD_TOP_LOCAL_Y;
+      const bdx = p.x - (tX + hookBound.cx);
+      const bdy = p.y - (baseY + hookBound.cy);
+      const bdz = p.z - (tZ + hookBound.cz);
+      const reach = hookBound.r + RING_R + HOOK_CONTACT_DIST + 0.02;
+      if (bdx * bdx + bdy * bdy + bdz * bdz > reach * reach) return;
+
+      const pts = hookCurveLocalPts;
+      const hookCenterLocalY = CONFIG.hookStemH + CONFIG.hookLoopR;
+      for (let j = 0; j < pts.length - 1; j++) {
+        baseY = BRIDGE_Y + ringPhys.targetLiftY + BOARD_TOP_LOCAL_Y;
+        const ax = tX + pts[j].x, ay = baseY + pts[j].y, az = tZ + pts[j].z;
+        const abx = pts[j + 1].x - pts[j].x, aby = pts[j + 1].y - pts[j].y, abz = pts[j + 1].z - pts[j].z;
+        const abLen2 = abx * abx + aby * aby + abz * abz;
+        if (abLen2 < 1e-12) continue;
+
+        // 粗判定：セグメント中点とリング円の距離
+        let sx = ax + abx * 0.5, sy = ay + aby * 0.5, sz = az + abz * 0.5;
+        closestPointOnRing(sx, sy, sz, _cp);
+        const lim = hookSegHalf[j] + HOOK_CONTACT_DIST + 0.002;
+        const mdx = _cp.x - sx, mdy = _cp.y - sy, mdz = _cp.z - sz;
+        if (mdx * mdx + mdy * mdy + mdz * mdz > lim * lim) continue;
+
+        // 交互射影でセグメント×円の最近接点ペアを求める
+        for (let it = 0; it < 3; it++) {
+          let t = ((_cp.x - ax) * abx + (_cp.y - ay) * aby + (_cp.z - az) * abz) / abLen2;
+          t = t < 0 ? 0 : (t > 1 ? 1 : t);
+          sx = ax + abx * t; sy = ay + aby * t; sz = az + abz * t;
+          closestPointOnRing(sx, sy, sz, _cp);
+        }
+
+        const dx = _cp.x - sx, dy = _cp.y - sy, dz = _cp.z - sz;
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d >= HOOK_CONTACT_DIST || d < 1e-7) continue;
+
+        const nx = dx / d, ny = dy / d, nz = dz / d;
+        const cx = _cp.x - nx * RING_TUBE, cy = _cp.y - ny * RING_TUBE, cz = _cp.z - nz * RING_TUBE;
+
+        // 衝突音：接近速度が一定以上のときのみ
+        const rx = cx - p.x, ry = cy - p.y, rz = cz - p.z;
+        const w = ringPhys.angVel, v = ringPhys.vel;
+        const vn = (v.x + w.y * rz - w.z * ry) * nx + (v.y + w.z * rx - w.x * rz) * ny + (v.z + w.x * ry - w.y * rx) * nz;
+        if (vn < -0.22) {
+          const nowMs = performance.now();
+          if (nowMs - lastClangTime > 140) {
+            lastClangTime = nowMs;
+            sfx.clang(Math.min(1.2, 0.5 - vn));
+          }
+        }
+
+        resolveRingContact(cx, cy, cz, nx, ny, nz, HOOK_CONTACT_DIST - d, MU_HOOK, true);
+
+        if (!ringPhys.linked && ny > 0.3 && sy > baseY + hookCenterLocalY) {
+          ringPhys.telemetry.hitTopDome = true;
+        }
+      }
+    }
+
+    // ---------- 位相判定：フックの線材がリングの穴を貫通しているか ----------
+    function computeHookLinked() {
+      refreshRingAxes();
+      const p = ringPhys.pos;
+      const tX = CONFIG.targetX, tZ = CONFIG.targetZ;
+      const baseY = BRIDGE_Y + ringPhys.targetLiftY + BOARD_TOP_LOCAL_Y;
+      const pts = hookCurveLocalPts;
+      let crossings = 0;
+      let prevX = 0, prevY = 0, prevZ = 0, prevD = 0;
+      for (let j = 0; j < pts.length; j++) {
+        const wx = tX + pts[j].x, wy = baseY + pts[j].y, wz = tZ + pts[j].z;
+        const d = (wx - p.x) * _az.x + (wy - p.y) * _az.y + (wz - p.z) * _az.z;
+        if (j > 0 && ((prevD < 0) !== (d < 0))) {
+          const t = prevD / (prevD - d);
+          const ix = prevX + (wx - prevX) * t - p.x;
+          const iy = prevY + (wy - prevY) * t - p.y;
+          const iz = prevZ + (wz - prevZ) * t - p.z;
+          if (ix * ix + iy * iy + iz * iz < RING_R * RING_R) crossings++;
+        }
+        prevX = wx; prevY = wy; prevZ = wz; prevD = d;
+      }
+      return (crossings % 2) === 1;
+    }
+
+    // ---------- 1サブステップ ----------
+    function physicsSubstep(h) {
+      const rp = ringPhys;
+      const targetActive = !rp.prizeDropped;
+      _prevPos.copy(rp.pos);
+      _prevQuat.copy(rp.quat);
+      const prevLift = rp.targetLiftY;
+
+      // 予測（重力・慣性）
+      rp.vel.y -= CONFIG.gravity * h;
+      rp.pos.addScaledVector(rp.vel, h);
+      refreshRingAxes();
+      rotateRingBy(rp.angVel.x * h, rp.angVel.y * h, rp.angVel.z * h);
+
+      if (targetActive) {
+        rp.targetVelY -= TARGET_GRAVITY * h;
+        rp.targetLiftY += rp.targetVelY * h;
+        if (rp.targetLiftY < 0) rp.targetLiftY = 0;
+      } else {
+        // 獲得確定後：つっぱり棒から外れて下のフロアへ落下＆バウンド
+        rp.targetVelY -= TARGET_GRAVITY * h;
+        rp.targetLiftY += rp.targetVelY * h;
+        if (rp.targetLiftY <= PRIZE_FLOOR_LIFT) {
+          rp.targetLiftY = PRIZE_FLOOR_LIFT;
+          if (Math.abs(rp.targetVelY) > 0.35) {
+            rp.targetVelY = -rp.targetVelY * 0.32;
+            sfx.clang(1.2);
+          } else {
+            rp.targetVelY = 0;
+          }
+        }
+      }
+
+      // 拘束解決（ガウス＝ザイデル）
+      contactCount = 0;
+      for (let it = 0; it < PHYS_ITERS; it++) {
+        solveRope();
+        solveStructureContacts(targetActive);
+        if (targetActive) {
+          solveHookContacts();
+          if (rp.targetLiftY < 0) rp.targetLiftY = 0;
+          if (rp.targetLiftY > 0.35) rp.targetLiftY = 0.35;
+        }
+      }
+
+      // 速度の更新
+      const invH = 1 / h;
+      rp.vel.set((rp.pos.x - _prevPos.x) * invH, (rp.pos.y - _prevPos.y) * invH, (rp.pos.z - _prevPos.z) * invH);
+      _dq.copy(_prevQuat).invert().premultiply(rp.quat);
+      const sgn = _dq.w >= 0 ? 2 * invH : -2 * invH;
+      rp.angVel.set(_dq.x * sgn, _dq.y * sgn, _dq.z * sgn);
+      if (targetActive) rp.targetVelY = THREE.MathUtils.clamp((rp.targetLiftY - prevLift) * invH, -8.0, 3.0);
+
+      // クーロン動摩擦（速度レベル）
+      for (let i = 0; i < contactCount; i++) {
+        const c = contactPool[i];
+        const v = rp.vel, w = rp.angVel;
+        const vx = v.x + (w.y * c.rz - w.z * c.ry);
+        let vy = v.y + (w.z * c.rx - w.x * c.rz);
+        const vz = v.z + (w.x * c.ry - w.y * c.rx);
+        if (c.withTarget) vy -= rp.targetVelY;
+        const vn = vx * c.nx + vy * c.ny + vz * c.nz;
+        let tx = vx - vn * c.nx, ty = vy - vn * c.ny, tz = vz - vn * c.nz;
+        const vt = Math.sqrt(tx * tx + ty * ty + tz * tz);
+        if (vt < 1e-6) continue;
+        tx /= vt; ty /= vt; tz /= vt;
+        const wt = ringGenInvMass(c.rx, c.ry, c.rz, tx, ty, tz);
+        const jt = Math.min(c.mu * c.lambda * invH, vt / wt);
+        applyRingVelocityImpulse(-tx * jt, -ty * jt, -tz * jt, c.rx, c.ry, c.rz);
+      }
+
+      // 空気抵抗・チェーン内部摩擦（揺れ幅スライダーの減衰設定に連動）
+      const linRate = -Math.log(Math.min(0.99999, CONFIG.damping)) * 60;
+      const angRate = -Math.log(Math.min(0.99999, CONFIG.flutterDamping)) * 60;
+      rp.vel.multiplyScalar(Math.exp(-linRate * h));
+      rp.angVel.multiplyScalar(Math.exp(-angRate * h));
+
+      // チェーンのねじり剛性：リング面がフック面と直交する吊り向きへ弱く復元（接触による回転は許容）
+      const nl = Math.hypot(_az.x, _az.z);
+      if (nl > 0.35) {
+        const tgt = getRingRestNormal();
+        let th = Math.atan2(_az.z * tgt.x - _az.x * tgt.z, _az.x * tgt.x + _az.z * tgt.z);
+        if (th > Math.PI / 2) th -= Math.PI;
+        else if (th < -Math.PI / 2) th += Math.PI;
+        rp.angVel.y += (th * 28 - rp.angVel.y * 3.5) * h;
+      }
+    }
+
+    function getRingRestYaw() {
+      return (CONFIG.hookDir === 'right' || CONFIG.hookDir === 'left') ? Math.PI / 2 : 0;
+    }
+    const _restNormalZ = { x: 0, z: 1 };
+    const _restNormalX = { x: 1, z: 0 };
+    function getRingRestNormal() {
+      return getRingRestYaw() !== 0 ? _restNormalX : _restNormalZ;
+    }
+
+    // クレーン直下に静止して吊り下がった状態へリセット
+    function resetRingAtRest() {
+      ringPhys.quat.setFromAxisAngle(_yAxis, getRingRestYaw());
+      refreshRingAxes();
+      ringPhys.pos.set(crane.x, CONFIG.craneY - 0.16 - crane.payOut - RING_ATTACH_Y, crane.z);
+      ringPhys.vel.set(0, 0, 0);
+      ringPhys.angVel.set(0, 0, 0);
+      ringPhys.ropeSlack = 0;
+      ringPhys.slackAmount = 0;
+      ringPhys.linked = false;
+      ringPhys.inHookCavity = false;
+      ringPhys.hookedLocked = false;
+      ringPhys.targetLiftY = 0;
+      ringPhys.targetVelY = 0;
+      ringPhys.liftProgress = 0;
+      physAnchor.x = crane.x;
+      physAnchor.y = CONFIG.craneY - 0.16;
+      physAnchor.z = crane.z;
+      physAnchor.payOut = crane.payOut;
+      physAnchor.init = true;
+    }
+
+    function sanitizePhysicsState() {
+      const p = ringPhys.pos, v = ringPhys.vel, w = ringPhys.angVel, q = ringPhys.quat;
+      const ok = Number.isFinite(p.x + p.y + p.z + v.x + v.y + v.z + w.x + w.y + w.z + q.x + q.y + q.z + q.w);
+      if (!ok) resetRingAtRest();
+      if (!Number.isFinite(ringPhys.targetLiftY) || !Number.isFinite(ringPhys.targetVelY)) {
+        ringPhys.targetLiftY = 0;
+        ringPhys.targetVelY = 0;
+      }
+    }
+
+    // クレーンの発進・停止時の慣性キック（実機の大振り感を再現）
+    function applyCraneImpulse(dvx, dvz) {
+      const g = CONFIG.swayGain;
+      ringPhys.vel.x -= dvx * 0.32 * g;
+      ringPhys.vel.z -= dvz * 0.32 * g;
+      ringPhys.angVel.z -= dvx * 1.6 * g;
+      ringPhys.angVel.x += dvz * 1.6 * g;
+    }
+
+    function updatePhysics(dt) {
+      sanitizePhysicsState();
+      const safeDt = THREE.MathUtils.clamp(dt, 0.0005, 0.025);
+      const h = safeDt / PHYS_SUBSTEPS;
+
+      // クレーン（チェーン上端）はフレーム間をサブステップで線形補間して滑らかに動かす
+      const anchorY = CONFIG.craneY - 0.16;
+      const x0 = physAnchor.init ? physAnchor.x : crane.x;
+      const z0 = physAnchor.init ? physAnchor.z : crane.z;
+      const l0 = physAnchor.init ? physAnchor.payOut : crane.payOut;
+      const teleport = Math.hypot(crane.x - x0, crane.z - z0) > 0.25 || Math.abs(crane.payOut - l0) > 0.3;
+      physAnchor.y = anchorY;
+
+      for (let s = 0; s < PHYS_SUBSTEPS; s++) {
+        const f = teleport ? 1 : (s + 1) / PHYS_SUBSTEPS;
+        physAnchor.x = x0 + (crane.x - x0) * f;
+        physAnchor.z = z0 + (crane.z - z0) * f;
+        physAnchor.payOut = l0 + (crane.payOut - l0) * f;
+        physicsSubstep(h);
+      }
+      physAnchor.init = true;
+      crane.prevX = crane.x;
+      crane.prevZ = crane.z;
+      crane.prevPayOut = crane.payOut;
+
+      // 位相（貫通）判定・テレメトリー
+      if (!ringPhys.prizeDropped) {
+        const linked = computeHookLinked();
+        if (linked && !ringPhys.linked) {
+          ringPhys.telemetry.enteredCavity = true;
+          sfx.sharin();
+        }
+        ringPhys.linked = linked;
+      } else {
+        ringPhys.linked = false;
+      }
+      ringPhys.inHookCavity = ringPhys.linked;
+      ringPhys.liftProgress = THREE.MathUtils.clamp(ringPhys.targetLiftY / 0.21, 0, 1);
+
+      if (currentState === STATE.DROPPING || currentState === STATE.SETTLING) {
+        ringPhys.telemetry.dxAtOpening = (ringPhys.pos.x - CONFIG.targetX) * 100;
+        ringPhys.telemetry.dzAtOpening = (ringPhys.pos.z - CONFIG.targetZ) * 100;
+      }
+
+      // 獲得落下時のみの演出用傾き
+      if (ringPhys.prizeDropped) {
+        ringPhys.prizeTiltX = THREE.MathUtils.lerp(ringPhys.prizeTiltX, 0.42, 0.08);
+        ringPhys.prizeTiltZ = THREE.MathUtils.lerp(ringPhys.prizeTiltZ, -0.35, 0.08);
+      } else {
+        ringPhys.prizeTiltX = THREE.MathUtils.lerp(ringPhys.prizeTiltX, 0, 0.2);
+        ringPhys.prizeTiltZ = THREE.MathUtils.lerp(ringPhys.prizeTiltZ, 0, 0.2);
+      }
+    }
+
+    resetRingAtRest();
+
+    // ============================================================================
+    // 10. 3Dビジュアル＆2面ワイプ・テレメトリー更新
+    // ============================================================================
+    const _eyeletLocalOffset = new THREE.Vector3();
+    const _eyeletWorldPos = new THREE.Vector3();
+    const sideOverlayCanvas = document.getElementById('side-cam-overlay');
+    const sideOverlayCtx = sideOverlayCanvas.getContext('2d');
+
+    function drawSideCamOverlay(hookZ, boardTopY, dzMm, clearanceMm) {
+      const cw = sideOverlayCanvas.width;
+      const ch = sideOverlayCanvas.height;
+      sideOverlayCtx.clearRect(0, 0, cw, ch);
+
+      const zMin = sideCamView.centerZ - sideCamView.halfH * pipSideAspect;
+      const zMax = sideCamView.centerZ + sideCamView.halfH * pipSideAspect;
+      const yMin = sideCamView.centerY - sideCamView.halfH;
+      const yMax = sideCamView.centerY + sideCamView.halfH;
+
+      const worldZToPx = (z) => ((z - zMin) / (zMax - zMin)) * cw;
+      const worldYToPy = (y) => ((yMax - y) / (yMax - yMin)) * ch;
+
+      const hookPx = worldZToPx(hookZ);
+      const ringPx = worldZToPx(ringPhys.pos.z);
+      const boardPy = worldYToPy(boardTopY);
+      const ringBottomPy = worldYToPy(ringPhys.pos.y - CONFIG.ringRadius - CONFIG.ringTubeR * 0.5);
+
+      sideOverlayCtx.strokeStyle = 'rgba(34, 211, 238, 0.65)';
+      sideOverlayCtx.lineWidth = 1;
+      sideOverlayCtx.setLineDash([3, 3]);
+      sideOverlayCtx.beginPath();
+      sideOverlayCtx.moveTo(hookPx, 22);
+      sideOverlayCtx.lineTo(hookPx, ch);
+      sideOverlayCtx.stroke();
+
+      const zoneTopPy = worldYToPy(boardTopY + 0.175);
+      const zoneBotPy = worldYToPy(boardTopY + 0.015);
+      if (boardPy > 22 && boardPy < ch + 20) {
+        sideOverlayCtx.fillStyle = 'rgba(16, 185, 129, 0.18)';
+        sideOverlayCtx.fillRect(0, zoneTopPy, cw, Math.max(2, zoneBotPy - zoneTopPy));
+
+        sideOverlayCtx.strokeStyle = 'rgba(245, 158, 11, 0.7)';
+        sideOverlayCtx.beginPath();
+        sideOverlayCtx.moveTo(0, boardPy);
+        sideOverlayCtx.lineTo(cw, boardPy);
+        sideOverlayCtx.stroke();
+      }
+
+      sideOverlayCtx.setLineDash([]);
+      sideOverlayCtx.strokeStyle = '#f43f5e';
+      sideOverlayCtx.lineWidth = 1.5;
+      sideOverlayCtx.beginPath();
+      sideOverlayCtx.moveTo(ringPx, Math.max(22, ringBottomPy - 10));
+      sideOverlayCtx.lineTo(ringPx, Math.min(ch, ringBottomPy + 10));
+      sideOverlayCtx.stroke();
+
+      sideOverlayCtx.fillStyle = '#f43f5e';
+      sideOverlayCtx.beginPath();
+      sideOverlayCtx.arc(ringPx, THREE.MathUtils.clamp(ringBottomPy, 20, ch - 4), 2.5, 0, Math.PI * 2);
+      sideOverlayCtx.fill();
+
+      sideOverlayCtx.fillStyle = 'rgba(2, 6, 23, 0.82)';
+      sideOverlayCtx.fillRect(2, ch - 16, cw - 4, 14);
+      sideOverlayCtx.font = 'bold 9px monospace';
+      const alignedZ = Math.abs(dzMm) < 5.5;
+      sideOverlayCtx.fillStyle = alignedZ ? '#34d399' : '#38bdf8';
+      sideOverlayCtx.fillText(`ΔZ:${dzMm >= 0 ? '+' : ''}${dzMm.toFixed(0)}`, 5, ch - 5);
+
+      const inSweetH = clearanceMm >= 1.5 && clearanceMm <= 17.5;
+      sideOverlayCtx.fillStyle = inSweetH ? '#34d399' : '#fbbf24';
+      sideOverlayCtx.fillText(`高:${clearanceMm >= 0 ? '+' : ''}${clearanceMm.toFixed(0)}`, cw - 52, ch - 5);
+    }
+
+    function updateSceneVisuals() {
+      updatePipVisibility();
+      carriageGroup.position.set(crane.x, CONFIG.craneY, crane.z);
+      targetAssembly.position.y = BRIDGE_Y + ringPhys.targetLiftY;
+      targetAssembly.rotation.set(ringPhys.prizeTiltX, 0, ringPhys.prizeTiltZ);
+
+      // フック捕捉中（inHookCavity / hookedLocked）はOリングを発光させて視覚的にわかりやすく表示
+      const hookBanner = document.getElementById('hook-status-banner');
+      const hookBannerInner = document.getElementById('hook-status-inner');
+      if (ringPhys.prizeDropped || currentState === STATE.CELEBRATING) {
+        matSilverRing.emissive.setHex(0xfbbf24);
+        matSilverRing.emissiveIntensity = 0.55;
+        if (hookBanner) {
+          hookBanner.classList.remove('hidden');
+          hookBannerInner.textContent = '🎉 GET!! つっぱり棒から落下獲得!!';
+          hookBannerInner.className = 'px-4 py-1 rounded-full bg-amber-400 border-2 border-white shadow-lg shadow-amber-500/50 text-xs sm:text-sm font-black text-slate-950 tracking-wider animate-bounce';
+        }
+      } else if (ringPhys.inHookCavity || ringPhys.hookedLocked || ringPhys.linked) {
+        matSilverRing.emissive.setHex(0x10b981);
+        matSilverRing.emissiveIntensity = 0.45;
+        if (hookBanner) {
+          hookBanner.classList.remove('hidden');
+          hookBannerInner.textContent = ringPhys.targetLiftY > 0.02
+            ? '🔥 LIFTING!! フックを吊り上げ中！'
+            : '✨ HOOK IN!! フックの懐に入りました！';
+          hookBannerInner.className = 'px-4 py-1 rounded-full bg-emerald-400 border-2 border-white shadow-lg shadow-emerald-500/50 text-xs sm:text-sm font-black text-slate-950 tracking-wider';
+        }
+      } else {
+        matSilverRing.emissive.setHex(0x000000);
+        matSilverRing.emissiveIntensity = 0.0;
+        if (hookBanner) hookBanner.classList.add('hidden');
+      }
+
+      ringGroup.position.copy(ringPhys.pos);
+      ringGroup.quaternion.copy(ringPhys.quat);
+
+      // Oリング上端アイレットの実ワールド座標へチェーン下端を完全一致（ちぎれ破綻防止）
+      _eyeletLocalOffset.set(0, CONFIG.ringRadius + 0.024, 0).applyQuaternion(ringPhys.quat);
+      _eyeletWorldPos.copy(ringPhys.pos).add(_eyeletLocalOffset);
+
+      const startPos = new THREE.Vector3(crane.x, CONFIG.craneY - 0.16, crane.z);
+      const endPos = _eyeletWorldPos;
+      const slack = ringPhys.ropeSlack;
+
+      for (let i = 0; i < CHAIN_COUNT; i++) {
+        const t = (i + 0.5) / CHAIN_COUNT;
+        const p = new THREE.Vector3().lerpVectors(startPos, endPos, t);
+        const sag = Math.sin(t * Math.PI) * slack * 0.45;
+        p.y -= sag;
+        chainLinks[i].position.copy(p);
+      }
+
+      const hookX = CONFIG.targetX;
+      const hookZ = CONFIG.targetZ;
+      const boardTopY = getBoardWorldTopY();
+
+      // ② SIDE CAM カメラフラスタムのリアルタイム連動
+      let targetCenterZ = (ringPhys.pos.z + hookZ) * 0.5;
+      let targetCenterY = 0.52;
+      let targetHalfH = 1.25;
+
+      const isCloseToHook = Math.abs(ringPhys.pos.z - hookZ) < 0.36 && (
+        currentState === STATE.DROPPING ||
+        currentState === STATE.SETTLING ||
+        currentState === STATE.LIFTING ||
+        currentState === STATE.WAIT_DESCENT
+      );
+
+      if (sideCamMode === 'zoom' || (sideCamMode === 'auto' && isCloseToHook)) {
+        targetCenterZ = THREE.MathUtils.lerp(hookZ, ringPhys.pos.z, 0.35);
+        targetCenterY = Math.max(boardTopY + 0.18, Math.min(0.65, ringPhys.pos.y - 0.05));
+        targetHalfH = 0.44;
+      } else {
+        const spanZ = Math.abs(ringPhys.pos.z - hookZ);
+        targetCenterZ = (ringPhys.pos.z + hookZ) * 0.5;
+        targetCenterY = 0.56;
+        targetHalfH = Math.max(1.18, (spanZ * 0.65) / pipSideAspect + 0.45);
+      }
+
+      sideCamView.centerZ = THREE.MathUtils.lerp(sideCamView.centerZ, targetCenterZ, 0.18);
+      sideCamView.centerY = THREE.MathUtils.lerp(sideCamView.centerY, targetCenterY, 0.18);
+      sideCamView.halfH = THREE.MathUtils.lerp(sideCamView.halfH, targetHalfH, 0.18);
+
+      pipSideCam.position.set(hookX + 3.5, sideCamView.centerY, sideCamView.centerZ);
+      pipSideCam.lookAt(hookX, sideCamView.centerY, sideCamView.centerZ);
+      pipSideCam.top = sideCamView.halfH;
+      pipSideCam.bottom = -sideCamView.halfH;
+      pipSideCam.left = -sideCamView.halfH * pipSideAspect;
+      pipSideCam.right = sideCamView.halfH * pipSideAspect;
+      pipSideCam.updateProjectionMatrix();
+
+      pipFrontCam.position.set(hookX, boardTopY + 0.22, hookZ + 1.05);
+      pipFrontCam.lookAt(hookX, boardTopY + 0.16, hookZ);
+
+      // HUD数値更新
+      const dxMm = (ringPhys.pos.x - hookX) * 100;
+      const dzMm = (ringPhys.pos.z - hookZ) * 100;
+      const ringBottomY = ringPhys.pos.y - CONFIG.ringRadius - CONFIG.ringTubeR * 0.5;
+      const clearanceMm = (ringBottomY - boardTopY) * 100;
+      const swayAmplitudeMm = (ringPhys.pos.x - crane.x) * 100;
+
+      const elDx = document.getElementById('hud-dx');
+      const elDz = document.getElementById('hud-dz');
+      const elCl = document.getElementById('hud-clearance');
+      const elTilt = document.getElementById('hud-tilt');
+
+      elDx.textContent = `${dxMm >= 0 ? '+' : ''}${dxMm.toFixed(0)}`;
+      elDz.textContent = `${dzMm >= 0 ? '+' : ''}${dzMm.toFixed(0)}`;
+      elCl.textContent = `${clearanceMm >= 0 ? '+' : ''}${clearanceMm.toFixed(0)}`;
+      elTilt.textContent = `${swayAmplitudeMm >= 0 ? '+' : ''}${swayAmplitudeMm.toFixed(0)}`;
+
+      elDx.className = `font-mono font-bold ${Math.abs(dxMm) < 9 ? 'text-emerald-400' : 'text-white'}`;
+      elDz.className = `font-mono font-bold ${Math.abs(dzMm) < 6 ? 'text-emerald-400' : 'text-white'}`;
+
+      const inSweetStopZone = clearanceMm >= 1.5 && clearanceMm <= 17.5;
+      elCl.className = `font-mono font-bold ${inSweetStopZone ? 'text-emerald-400 animate-pulse' : (clearanceMm < 1.5 ? 'text-rose-400' : 'text-amber-300')}`;
+
+      drawSideCamOverlay(hookZ, boardTopY, dzMm, clearanceMm);
+
+      // 周期オシロスコープ更新（フックの向きが左右ならX揺れ、前後ならZ揺れを表示）
+      const phaseDot = document.getElementById('phase-dot');
+      const phaseRec = document.getElementById('phase-recommend');
+      const openVec = getHookOpenVector();
+      const swayAlongOpen = (ringPhys.pos.x - crane.x) * openVec.x + (ringPhys.pos.z - crane.z) * openVec.z;
+      const normSway = THREE.MathUtils.clamp(swayAlongOpen / 0.34, -1, 1);
+      const dotPercent = 50 + normSway * 44;
+      phaseDot.style.left = `calc(${dotPercent}% - 4px)`;
+
+      if (Math.abs(normSway) < 0.05 && Math.hypot(ringPhys.vel.x, ringPhys.vel.z) < 0.08) {
+        phaseRec.textContent = '静止';
+        phaseRec.className = 'text-[8px] font-bold text-slate-400 w-14 text-right truncate';
+      } else if (normSway > 0.14) {
+        phaseRec.textContent = '★進入!';
+        phaseRec.className = 'text-[8px] font-bold text-emerald-400 w-14 text-right truncate';
+      } else {
+        phaseRec.textContent = '逆溜め';
+        phaseRec.className = 'text-[8px] font-bold text-amber-300 w-14 text-right truncate';
+      }
+
+      // 寸止め高さインジケーターバー更新
+      const stopMarker = document.getElementById('stop-height-marker');
+      const normH = THREE.MathUtils.clamp((clearanceMm + 5) / 60, 0, 1) * 100;
+      stopMarker.style.marginBottom = `${normH}%`;
+      stopMarker.className = `w-full h-1.5 rounded-sm shadow ${inSweetStopZone ? 'bg-emerald-300 ring-2 ring-emerald-400' : 'bg-white'}`;
+    }
+
+    // ============================================================================
+    // 11. UI・通知・AI攻略アナライザー
+    // ============================================================================
+    const btnRight = document.getElementById('btn-right');
+    const btnDepth = document.getElementById('btn-depth');
+    const stateBadge = document.getElementById('state-badge');
+    const toastBanner = document.getElementById('toast-banner');
+    const toastText = document.getElementById('toast-text');
+    let toastTimer = null;
+
+    function notify(msg, type = 'info', duration = 2200) {
+      toastText.textContent = msg;
+      const inner = document.getElementById('toast-inner');
+      if (type === 'success') inner.className = 'px-4 py-1.5 rounded-full glass-panel border-2 border-emerald-400 shadow-xl text-xs font-bold text-emerald-200 flex items-center gap-2';
+      else if (type === 'warn') inner.className = 'px-4 py-1.5 rounded-full glass-panel border-2 border-amber-400 shadow-xl text-xs font-bold text-amber-200 flex items-center gap-2';
+      else inner.className = 'px-4 py-1.5 rounded-full glass-panel border border-pink-400/50 shadow-xl text-xs font-bold text-white flex items-center gap-2';
+
+      toastBanner.classList.remove('opacity-0');
+      toastBanner.classList.add('opacity-100');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toastBanner.classList.remove('opacity-100');
+        toastBanner.classList.add('opacity-0');
+      }, duration);
+    }
+
+    function updateUI() {
+      document.getElementById('credit-count').textContent = credits;
+      document.getElementById('win-count').textContent = wins;
+      stateBadge.textContent = ringPhys.statusText;
+
+      const autoBtn = document.getElementById('auto-win-btn');
+      if (autoBtn) {
+        if (isAutoPlay) {
+          autoBtn.textContent = '🤖実演中';
+          autoBtn.className = 'px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 font-black text-[10px] animate-pulse border border-amber-200 shadow';
+        } else {
+          autoBtn.textContent = '🎯オート';
+          autoBtn.className = 'px-1.5 py-0.5 rounded bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 border border-emerald-300/70 text-[10px] font-black text-white shadow transition';
+        }
+      }
+
+      btnRight.disabled = isAutoPlay || (currentState !== STATE.READY_X && currentState !== STATE.MOVING_X);
+      btnDepth.disabled = isAutoPlay || (currentState !== STATE.READY_Z && currentState !== STATE.MOVING_Z);
+    }
+
+    function startAutoWinDemo() {
+      sessionToken++;
+      sfx.stopMotor();
+      isAutoPlay = true;
+      hideAICoachCard();
+      document.getElementById('win-modal').classList.add('hidden');
+
+      // 下降量が極端に高すぎ（+18mm超）や深すぎ（-18mm未満）の場合は確実に掛かる高さへ自動調整
+      if (CONFIG.dropClearanceMm > 14 || CONFIG.dropClearanceMm < -14) {
+        syncDropClearanceUI(4);
+      }
+
+      // クレーンを初期位置へ戻す
+      crane.x = CONFIG.homeX;
+      crane.z = CONFIG.zStartMode === 'aligned' ? CONFIG.targetZ : CONFIG.homeZStandard;
+      crane.prevX = crane.x;
+      crane.prevZ = crane.z;
+      crane.vx = 0;
+      crane.vz = 0;
+      crane.prevVx = 0;
+      crane.prevVz = 0;
+      crane.payOut = crane.minPayOut;
+      crane.prevPayOut = crane.minPayOut;
+
+      ringPhys.prizeDropped = false;
+      ringPhys.prizeDropVelY = 0;
+      ringPhys.prizeTiltX = 0;
+      ringPhys.prizeTiltZ = 0;
+      ringPhys.targetLiftY = 0;
+      ringPhys.targetVelY = 0;
+      ringPhys.liftProgress = 0;
+      ringPhys.inHookCavity = false;
+      ringPhys.hookedLocked = false;
+      ringPhys.biteDepth = 0;
+      ringPhys.slippedOff = false;
+      resetRingAtRest();
+
+      // オート実演時はフックの懐の奥（ドーム頂点の真下）へ確実に入るよう精密に位置決め
+      const openVec = getHookOpenVector();
+      autoTargetX = CONFIG.targetX + openVec.x * 0.05;
+      autoTargetZ = CONFIG.targetZ + openVec.z * 0.05;
+
+      notify('🎯【オート獲得実演スタート】①右移動 → ②奥行移動 → フック捕捉＆吊り上げ落下を自動実演します！', 'success', 3200);
+      onBtn1Down();
+    }
+
+    function syncAIAnalyzerUI() {
+      const btnState = document.getElementById('ai-btn-state');
+      const chk = document.getElementById('cfg-ai-analyzer');
+      if (btnState) {
+        btnState.textContent = CONFIG.showAIAnalyzer ? 'ON' : 'OFF';
+        btnState.className = CONFIG.showAIAnalyzer ? 'text-emerald-400 font-black' : 'text-slate-400 font-bold';
+      }
+      if (chk) chk.checked = CONFIG.showAIAnalyzer;
+      if (!CONFIG.showAIAnalyzer) hideAICoachCard();
+    }
+
+    function showAICoachReport(won) {
+      if (!CONFIG.showAIAnalyzer) return;
+
+      const card = document.getElementById('ai-coach-card');
+      const icon = document.getElementById('coach-icon');
+      const title = document.getElementById('coach-title');
+      const desc = document.getElementById('coach-desc');
+      const metrics = document.getElementById('coach-metrics');
+
+      const t = ringPhys.telemetry;
+      const dirLabel = CONFIG.hookDir === 'right' ? '右側' : '左側';
+      const oppLabel = CONFIG.hookDir === 'right' ? '左側' : '右側';
+
+      card.classList.remove('hidden');
+
+      if (won) {
+        icon.textContent = '🏆';
+        title.textContent = '【攻略成功】横の周期＆下降量設定を活かした完璧なフック捕捉！';
+        desc.textContent = `フックの開口部（${dirLabel}）へ真円Oリングがスイングする周期と下降制限位置（${CONFIG.dropClearanceMm >= 0 ? '+' : ''}${CONFIG.dropClearanceMm}mm）が噛み合い、見事にフトコロの奥まで入れて釣り上げました！`;
+      } else {
+        icon.textContent = '💡';
+        if (t.slippedOnLift) {
+          title.textContent = '【超惜しい！先端すっぽ抜け】フック先端に浅く掛かりましたが上昇中に滑落しました';
+          desc.textContent = `開口部の入り口付近（浅い位置）にリングが掛かっていたため、ターゲットの重みで先端からツルッと滑り落ちました。あと10〜15mmほどフックの奥（軸側）まで深くスイングさせて入れると完全にロックされます！`;
+        } else if (Math.abs(t.dzAtOpening) > 8.5) {
+          title.textContent = `【惜しい！】奥行きが ${t.dzAtOpening > 0 ? '手前' : '奥'} に ${Math.abs(t.dzAtOpening).toFixed(1)}mm ズレています`;
+          desc.textContent = `右上の「SIDE CAM（真横連動モニター）」のシアン破線（フック軸）にピンクのリング下端マーカーが重なる位置まで②ボタンで進めてみましょう。`;
+        } else if (t.enteredCavity && t.hitBoardFloor && CONFIG.dropClearanceMm < -12) {
+          title.textContent = '【原因：床ベタ倒れ脱落】一度フックに入りましたが深い下降量で倒れて抜けました！';
+          desc.textContent = `現在の下降量設定（${CONFIG.dropClearanceMm}mm）は深めの床ベタ設定のため、リングが大きく傾いて外れました。横の周期を大きく振るか、⚙️設定から下降量を「標準(-6mm)」「浅め(+6mm)」に変更して挙動を比較してみてください。`;
+        } else if (CONFIG.dropClearanceMm > 18) {
+          title.textContent = `【下降量設定が浅すぎます】停止位置（+${CONFIG.dropClearanceMm}mm）がフック開口部より上です`;
+          desc.textContent = `⚙️設定の「4. 筐体の下降量設定」が浅すぎるため、？フックの開口部までOリングが届いていません。下降量を +14mm 以下に設定してください。`;
+        } else if (t.hitTopDome) {
+          title.textContent = '【フック頂点弾かれ】？フックの頭頂部に当たって滑りました';
+          desc.textContent = `真上から落とすとフックの頭に当たります。少し${oppLabel}（空いていない側）に寄せ、${dirLabel}へ揺れる周期に合わせて②ボタンを離して開口部へ滑り込ませましょう。`;
+        } else {
+          title.textContent = `【横位置ズレ】フック中心から左右に ${t.dxAtOpening >= 0 ? '+' : ''}${t.dxAtOpening.toFixed(1)}mm 離れています`;
+          desc.textContent = `横の周期を使う場合はフックの${oppLabel}に降ろして${dirLabel}へ揺れるリズムで落とし、浅め下降量設定の場合はフックの真上（0mm付近）を狙いましょう。`;
+        }
+      }
+
+      metrics.innerHTML = `
+        <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300">左右ΔX: ${t.dxAtOpening >= 0 ? '+' : ''}${t.dxAtOpening.toFixed(1)}mm</span>
+        <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300">奥行ΔZ: ${t.dzAtOpening >= 0 ? '+' : ''}${t.dzAtOpening.toFixed(1)}mm</span>
+        <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-emerald-300">設定下降量: ${CONFIG.dropClearanceMm >= 0 ? '+' : ''}${CONFIG.dropClearanceMm}mm</span>
+      `;
+    }
+
+    function hideAICoachCard() {
+      document.getElementById('ai-coach-card').classList.add('hidden');
+    }
+    document.getElementById('close-coach-btn').addEventListener('click', hideAICoachCard);
+    document.getElementById('disable-coach-btn').addEventListener('click', () => {
+      sfx.click(false);
+      CONFIG.showAIAnalyzer = false;
+      syncAIAnalyzerUI();
+      notify('AI攻略アナライザーの自動表示をOFFにしました（上部バーからいつでもONに戻せます）', 'info', 2500);
+    });
+    document.getElementById('toggle-ai-btn').addEventListener('click', () => {
+      sfx.click(true);
+      CONFIG.showAIAnalyzer = !CONFIG.showAIAnalyzer;
+      syncAIAnalyzerUI();
+      notify(CONFIG.showAIAnalyzer ? '🤖 AI攻略アナライザーを【ON】にしました' : '🤖 AI攻略アナライザーを【OFF】にしました', 'info', 1800);
+    });
+
+    // ============================================================================
+    // 12. 2ボタン式 ＆ レバー式 アクション制御
+    // ============================================================================
+    function startDescentSequence() {
+      const myToken = ++sessionToken;
+      currentState = STATE.WAIT_DESCENT;
+      ringPhys.statusText = '下降開始';
+      ringPhys.inHookCavity = false;
+      ringPhys.hookedLocked = false;
+      ringPhys.biteDepth = 0;
+      ringPhys.slippedOff = false;
+      ringPhys.slackAmount = 0;
+
+      ringPhys.telemetry.stoppedManually = false;
+      ringPhys.telemetry.stopClearanceMm = CONFIG.dropClearanceMm;
+      ringPhys.telemetry.hitBoardFloor = false;
+      ringPhys.telemetry.enteredCavity = false;
+      ringPhys.telemetry.hitTopDome = false;
+      ringPhys.telemetry.slidSpine = false;
+      ringPhys.telemetry.slippedOnLift = false;
+      ringPhys.telemetry.dxAtOpening = (ringPhys.pos.x - CONFIG.targetX) * 100;
+      ringPhys.telemetry.dzAtOpening = (ringPhys.pos.z - CONFIG.targetZ) * 100;
+
+      updateUI();
+
+      setTimeout(() => {
+        if (myToken !== sessionToken || currentState !== STATE.WAIT_DESCENT) return;
+        currentState = STATE.DROPPING;
+        sfx.startMotor(110);
+        ringPhys.statusText = `下降中(設定:${CONFIG.dropClearanceMm >= 0 ? '+' : ''}${CONFIG.dropClearanceMm}mm)`;
+        updateUI();
+      }, 220);
+    }
+
+    function onBtn1Down() {
+      if (currentState !== STATE.READY_X) return;
+      sfx.click(true);
+      sfx.startMotor(142);
+      btnRight.classList.add('pressed');
+      currentState = STATE.MOVING_X;
+      ringPhys.statusText = '右移動中';
+      applyCraneImpulse(CONFIG.craneSpeed * 0.85, 0);
+      hideAICoachCard();
+      updateUI();
+    }
+    function onBtn1Up() {
+      if (currentState !== STATE.MOVING_X) return;
+      sfx.click(false);
+      sfx.stopMotor();
+      btnRight.classList.remove('pressed');
+      if (isAutoPlay) { ringPhys.vel.set(0, 0, 0); ringPhys.angVel.set(0, 0, 0); } else { applyCraneImpulse(-CONFIG.craneSpeed * 0.95, 0); }
+
+      if (CONFIG.zStartMode === 'aligned') {
+        startDescentSequence();
+      } else {
+        currentState = STATE.READY_Z;
+        ringPhys.statusText = '奥行移動待機';
+        notify('横位置確定！Oリングの横揺れ周期と右上の【SIDE CAM】を見て②ボタンで進めます', 'info', 2400);
+        updateUI();
+      }
+    }
+
+    function onBtn2Down() {
+      if (currentState !== STATE.READY_Z) return;
+      sfx.click(true);
+      sfx.startMotor(152);
+      btnDepth.classList.add('pressed');
+      currentState = STATE.MOVING_Z;
+      ringPhys.statusText = '奥行移動中';
+      applyCraneImpulse(0, CONFIG.craneSpeed * 0.85);
+      updateUI();
+    }
+    function onBtn2Up() {
+      if (currentState !== STATE.MOVING_Z) return;
+      sfx.click(false);
+      sfx.stopMotor();
+      btnDepth.classList.remove('pressed');
+      if (isAutoPlay) { ringPhys.vel.set(0, 0, 0); ringPhys.angVel.set(0, 0, 0); } else { applyCraneImpulse(0, -CONFIG.craneSpeed * 0.95); }
+      startDescentSequence();
+    }
+
+    function onLeverDropDown() {
+      if (CONFIG.controlMode === 'lever' && currentState === STATE.LEVER_FREE) {
+        sfx.click(true);
+        startDescentSequence();
+      }
+    }
+
+    function evaluateAndStartLift(activeToken = sessionToken) {
+      if (activeToken !== sessionToken) return;
+      currentState = STATE.LIFTING;
+      sfx.startMotor(132);
+      updateUI();
+
+      if (ringPhys.linked) {
+        ringPhys.hookedLocked = true;
+        ringPhys.inHookCavity = true;
+        ringPhys.statusText = '★フック完全捕捉・吊り上げ中!!';
+        sfx.sharin();
+        notify('✨ フックに完全捕捉！多層ターゲットを吊り上げます！', 'success', 2200);
+      } else {
+        ringPhys.hookedLocked = false;
+        ringPhys.inHookCavity = false;
+        ringPhys.statusText = '空振り上昇中...';
+      }
+    }
+
+    function triggerWinCelebration() {
+      wins++;
+      sfx.fanfare();
+      const t = ringPhys.telemetry;
+      document.getElementById('win-stat-dx').textContent = `${t.dxAtOpening >= 0 ? '+' : ''}${t.dxAtOpening.toFixed(1)}mm`;
+      document.getElementById('win-stat-dz').textContent = `${t.dzAtOpening >= 0 ? '+' : ''}${t.dzAtOpening.toFixed(1)}mm`;
+      document.getElementById('win-stat-h').textContent = `${CONFIG.dropClearanceMm >= 0 ? '+' : ''}${CONFIG.dropClearanceMm}mm`;
+      document.getElementById('win-method-badge').textContent = isAutoPlay
+        ? '🎯 オート実演：？フック捕捉＆ターゲット落下獲得！'
+        : (CONFIG.dropClearanceMm >= 1
+          ? '★「地面スレスレ下降設定」完全成功！'
+          : '★「横の周期スイング」開口部スライドイン完全成功！');
+      document.getElementById('win-modal').classList.remove('hidden');
+      updateUI();
+    }
+
+    document.getElementById('win-continue-btn').addEventListener('click', () => {
+      sfx.click(true);
+      document.getElementById('win-modal').classList.add('hidden');
+      ringPhys.prizeDropped = false;
+      ringPhys.prizeDropVelY = 0;
+      ringPhys.prizeTiltX = 0;
+      ringPhys.prizeTiltZ = 0;
+      ringPhys.targetLiftY = 0;
+      ringPhys.liftProgress = 0;
+    });
+
+    // カスタム獲得イラストのローカル差し替え＆保存サポート
+    const winImgEl = document.getElementById('win-celebration-img');
+    const winImgFallbackEl = document.getElementById('win-img-fallback');
+    const customWinImgInput = document.getElementById('custom-win-img-input');
+
+    try {
+      const savedCustomImg = localStorage.getItem('ufo_custom_win_img_v1');
+      if (savedCustomImg && winImgEl) {
+        winImgEl.src = savedCustomImg;
+      }
+    } catch (e) {}
+
+    if (customWinImgInput && winImgEl) {
+      customWinImgInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target.result;
+          winImgEl.dataset.fallback = '';
+          winImgEl.style.display = 'block';
+          winImgEl.src = dataUrl;
+          if (winImgFallbackEl) winImgFallbackEl.classList.add('hidden');
+          try {
+            localStorage.setItem('ufo_custom_win_img_v1', dataUrl);
+          } catch (err) {}
+          notify('🖼️ 獲得時のGETイラストを更新しました！', 'success', 2200);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    const previewWinModalBtn = document.getElementById('preview-win-modal-btn');
+    if (previewWinModalBtn) {
+      previewWinModalBtn.addEventListener('click', () => {
+        sfx.fanfare();
+        settingsDrawer.classList.add('hidden');
+        document.getElementById('win-modal').classList.remove('hidden');
+      });
+    }
+
+    function finishPlayCycle() {
+      sessionToken++;
+      sfx.stopMotor();
+      isAutoPlay = false;
+      credits = Math.max(0, credits - 1);
+
+      if (CONFIG.carryOverSway) {
+        ringPhys.vel.x = THREE.MathUtils.clamp(ringPhys.vel.x - 0.5, -1.8, 1.8);
+        ringPhys.angVel.z = THREE.MathUtils.clamp(ringPhys.angVel.z - 1.2, -3.5, 3.5);
+      } else {
+        ringPhys.vel.set(0, 0, 0);
+        ringPhys.angVel.set(0, 0, 0);
+      }
+
+      if (CONFIG.controlMode === 'lever') {
+        currentState = STATE.LEVER_FREE;
+        leverTimer = 20.0;
+        ringPhys.statusText = 'レバー操作待機(戻り揺れ中)';
+      } else {
+        currentState = STATE.READY_X;
+        ringPhys.statusText = CONFIG.carryOverSway ? '待機中(★戻り揺れチャンス!)' : '待機中';
+      }
+      updateUI();
+    }
+
+    // ============================================================================
+    // 13. メインループ（物理・状態遷移・マルチビューポート描画）
+    // ============================================================================
+    const clock = new THREE.Clock();
+    const slowBadgeEl = document.getElementById('climax-slow-badge');
+
+    function animate() {
+      requestAnimationFrame(animate);
+      // タブ復帰時や負荷時の極端なフレーム飛びを防ぐため1フレーム最大18msに制限
+      const rawDt = Math.min(clock.getDelta(), 0.018);
+
+      // フック周辺のクライマックス区間（下降終盤〜着地〜巻き上げ引っ掛かり瞬間）では自動的に再生速度を落として確実に見せる
+      const boardTopY = getBoardWorldTopY();
+      const ringBottomY = ringPhys.pos.y - CONFIG.ringRadius - CONFIG.ringTubeR * 0.5;
+      const nearHookHeight = (ringBottomY - boardTopY) < 0.34;
+      const inClimaxState = (currentState === STATE.DROPPING || currentState === STATE.SETTLING || (currentState === STATE.LIFTING && ringPhys.liftProgress < 0.65));
+      const isSlowActive = inClimaxState && nearHookHeight && CONFIG.climaxSlowScale < 0.99;
+
+      if (slowBadgeEl) {
+        if (isSlowActive) slowBadgeEl.classList.remove('hidden');
+        else slowBadgeEl.classList.add('hidden');
+      }
+
+      const timeScale = isSlowActive ? CONFIG.climaxSlowScale : 1.0;
+      const dt = rawDt * timeScale;
+
+      switch (currentState) {
+        case STATE.MOVING_X:
+          crane.x += CONFIG.craneSpeed * rawDt;
+          if (isAutoPlay && crane.x >= autoTargetX) {
+            crane.x = autoTargetX;
+            const myToken = sessionToken;
+            onBtn1Up();
+            if (CONFIG.zStartMode !== 'aligned') {
+              setTimeout(() => {
+                if (isAutoPlay && myToken === sessionToken && currentState === STATE.READY_Z) {
+                  onBtn2Down();
+                }
+              }, 360);
+            }
+            break;
+          }
+          if (crane.x >= CONFIG.maxX) {
+            crane.x = CONFIG.maxX;
+            onBtn1Up();
+          }
+          break;
+
+        case STATE.MOVING_Z:
+          crane.z += CONFIG.craneSpeed * rawDt;
+          if (isAutoPlay && crane.z >= autoTargetZ) {
+            crane.z = autoTargetZ;
+            onBtn2Up();
+            break;
+          }
+          if (crane.z >= CONFIG.maxZ) {
+            crane.z = CONFIG.maxZ;
+            onBtn2Up();
+          }
+          break;
+
+        case STATE.LEVER_FREE: {
+          let moved = false;
+          if (leverInput.left) { crane.x = Math.max(CONFIG.homeX, crane.x - CONFIG.craneSpeed * rawDt); moved = true; }
+          if (leverInput.right) { crane.x = Math.min(CONFIG.maxX, crane.x + CONFIG.craneSpeed * rawDt); moved = true; }
+          if (leverInput.back) { crane.z = Math.max(CONFIG.homeZStandard, crane.z - CONFIG.craneSpeed * rawDt); moved = true; }
+          if (leverInput.front) { crane.z = Math.min(CONFIG.maxZ, crane.z + CONFIG.craneSpeed * rawDt); moved = true; }
+
+          if (moved) {
+            leverTimer = Math.max(0, leverTimer - rawDt);
+            document.getElementById('lever-timer').textContent = `${leverTimer.toFixed(1)}s`;
+            if (leverTimer <= 0) startDescentSequence();
+          }
+          break;
+        }
+
+        case STATE.DROPPING: {
+          crane.payOut += CONFIG.dropSpeed * dt;
+
+          // 筐体設定の下降量（CONFIG.dropClearanceMm）から最大チェーン繰り出し量を算出
+          const baseTouchPayOut = (CONFIG.craneY - 0.16 - boardTopY) - (CONFIG.ringRadius * 2 + CONFIG.ringTubeR);
+          const maxPayOut = Math.max(crane.minPayOut + 0.15, baseTouchPayOut - (CONFIG.dropClearanceMm * 0.01));
+
+          if (crane.payOut >= maxPayOut) {
+            crane.payOut = maxPayOut;
+            const myToken = ++sessionToken;
+            sfx.stopMotor();
+            currentState = STATE.SETTLING;
+            ringPhys.statusText = `最下点到達(${CONFIG.dropClearanceMm >= 0 ? '+' : ''}${CONFIG.dropClearanceMm}mm)`;
+            updateUI();
+            setTimeout(() => {
+              if (myToken !== sessionToken || currentState !== STATE.SETTLING) return;
+              evaluateAndStartLift(myToken);
+            }, 680);
+          }
+          break;
+        }
+
+        case STATE.LIFTING:
+          crane.payOut -= CONFIG.liftSpeed * dt;
+
+          if ((ringPhys.hookedLocked || ringPhys.linked) && ringPhys.liftProgress >= 0.95) {
+            const myToken = ++sessionToken;
+            sfx.stopMotor();
+            sfx.clang(1.3);
+            currentState = STATE.CELEBRATING;
+            ringPhys.prizeDropped = true;
+            ringPhys.prizeDropVelY = 0.45; // 少し跳ねてからつっぱり棒の下へ豪快に落下
+            ringPhys.hookedLocked = false;
+            ringPhys.statusText = '🎉 景品落下・GET!!';
+            notify('🎉 GET!! 多層ターゲットがつっぱり棒から外れて落下しました！', 'success', 3500);
+            updateUI();
+
+            // ターゲットが下のフロアへ落下するモーションを見せてから獲得モーダルを表示
+            setTimeout(() => {
+              if (myToken !== sessionToken) return;
+              triggerWinCelebration();
+              showAICoachReport(true);
+            }, 900);
+
+            setTimeout(() => {
+              if (myToken !== sessionToken) return;
+              ringPhys.inHookCavity = false;
+              currentState = STATE.RETURNING;
+              sfx.startMotor(125);
+              updateUI();
+            }, 2200);
+            break;
+          }
+
+          // 1.4倍チェーンでもターゲットを吊り上げきれるよう、フック捕捉中は CONFIG.liftWinPullM まで巻き上げ可能にする
+          const effectiveMinPayOut = (ringPhys.hookedLocked || ringPhys.linked) ? CONFIG.liftWinPullM : crane.minPayOut;
+          if (crane.payOut <= effectiveMinPayOut) {
+            crane.payOut = effectiveMinPayOut;
+            showAICoachReport(ringPhys.prizeDropped);
+            currentState = STATE.RETURNING;
+            sfx.startMotor(125);
+            ringPhys.statusText = 'ホーム帰還中';
+            updateUI();
+          }
+          break;
+
+        case STATE.RETURNING: {
+          crane.payOut = THREE.MathUtils.lerp(crane.payOut, crane.minPayOut, 0.15);
+          ringPhys.targetLiftY = THREE.MathUtils.lerp(ringPhys.targetLiftY, 0, 0.2);
+          const targetHomeZ = CONFIG.zStartMode === 'aligned' ? CONFIG.targetZ : CONFIG.homeZStandard;
+          const distX = CONFIG.homeX - crane.x;
+          const distZ = targetHomeZ - crane.z;
+          const step = CONFIG.craneSpeed * 1.45 * dt;
+
+          if (Math.hypot(distX, distZ) <= step) {
+            crane.x = CONFIG.homeX;
+            crane.z = targetHomeZ;
+            finishPlayCycle();
+          } else {
+            const ang = Math.atan2(distZ, distX);
+            crane.x += Math.cos(ang) * step;
+            crane.z += Math.sin(ang) * step;
+          }
+          break;
+        }
+      }
+
+      updatePhysics(dt);
+      updateSceneVisuals();
+
+      // メイン画面＋右上2面ワイプのマルチビューポート描画
+      const fullW = container.clientWidth;
+      const fullH = container.clientHeight;
+      if (fullW > 0 && fullH > 0) {
+        renderer.setViewport(0, 0, fullW, fullH);
+        renderer.setScissor(0, 0, fullW, fullH);
+        renderer.setScissorTest(true);
+        renderer.clear();
+        renderer.render(scene, mainCamera);
+
+        const canvasRect = container.getBoundingClientRect();
+        const sideBoxEl = document.getElementById('side-cam-box');
+        const frontBoxEl = document.getElementById('front-cam-box');
+
+        if (sideBoxEl && !sideBoxEl.classList.contains('hidden')) {
+          const sRect = sideBoxEl.getBoundingClientRect();
+          const sLeft = Math.round(sRect.left - canvasRect.left);
+          const sBottom = Math.round(canvasRect.bottom - sRect.bottom);
+          const sW = Math.round(sRect.width);
+          const sH = Math.round(sRect.height);
+
+          if (sW > 10 && sH > 10) {
+            renderer.setViewport(sLeft, sBottom, sW, sH);
+            renderer.setScissor(sLeft, sBottom, sW, sH);
+            renderer.clearDepth();
+            renderer.render(scene, pipSideCam);
+          }
+        }
+
+        if (frontBoxEl && !frontBoxEl.classList.contains('hidden')) {
+          const fRect = frontBoxEl.getBoundingClientRect();
+          const fLeft = Math.round(fRect.left - canvasRect.left);
+          const fBottom = Math.round(canvasRect.bottom - fRect.bottom);
+          const fW = Math.round(fRect.width);
+          const fH = Math.round(fRect.height);
+
+          if (fW > 10 && fH > 10) {
+            pipFrontCam.aspect = fW / fH;
+            pipFrontCam.updateProjectionMatrix();
+            renderer.setViewport(fLeft, fBottom, fW, fH);
+            renderer.setScissor(fLeft, fBottom, fW, fH);
+            renderer.clearDepth();
+            renderer.render(scene, pipFrontCam);
+          }
+        }
+        renderer.setScissorTest(false);
+      }
+    }
+
+    // ============================================================================
+    // 14. イベントリスナー登録
+    // ============================================================================
+    function bindHoldEvents(el, downFn, upFn) {
+      el.addEventListener('pointerdown', (e) => { e.preventDefault(); downFn(); });
+      window.addEventListener('pointerup', () => upFn());
+      el.addEventListener('pointerleave', () => upFn());
+    }
+    bindHoldEvents(btnRight, onBtn1Down, onBtn1Up);
+    bindHoldEvents(btnDepth, onBtn2Down, onBtn2Up);
+    document.getElementById('lever-drop-btn').addEventListener('pointerdown', (e) => { e.preventDefault(); onLeverDropDown(); });
+
+    function bindLeverDir(id, key) {
+      const el = document.getElementById(id);
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (currentState !== STATE.LEVER_FREE) return;
+        if (!leverInput[key]) {
+          const impulseX = key === 'right' ? 0.55 : (key === 'left' ? -0.55 : 0);
+          const impulseZ = key === 'front' ? 0.55 : (key === 'back' ? -0.55 : 0);
+          applyCraneImpulse(impulseX, impulseZ);
+        }
+        leverInput[key] = true;
+        sfx.startMotor(142);
+      });
+      const stopDir = () => {
+        if (leverInput[key]) {
+          const stopImpulseX = key === 'right' ? -0.65 : (key === 'left' ? 0.65 : 0);
+          const stopImpulseZ = key === 'front' ? -0.65 : (key === 'back' ? 0.65 : 0);
+          applyCraneImpulse(stopImpulseX, stopImpulseZ);
+          leverInput[key] = false;
+          if (!leverInput.left && !leverInput.right && !leverInput.back && !leverInput.front) {
+            sfx.stopMotor();
+          }
+        }
+      };
+      window.addEventListener('pointerup', stopDir);
+      el.addEventListener('pointerleave', stopDir);
+    }
+    bindLeverDir('joy-left', 'left');
+    bindLeverDir('joy-right', 'right');
+    bindLeverDir('joy-back', 'back');
+    bindLeverDir('joy-front', 'front');
+
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      if (CONFIG.controlMode === '3btn') {
+        if (e.key === '1' || e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') onBtn1Down();
+        if (e.key === '2' || e.key === 'ArrowDown' || e.key === 'w' || e.key === 'W') onBtn2Down();
+      } else {
+        if (e.key === 'ArrowLeft' || e.key === 'a') { leverInput.left = true; applyCraneImpulse(-0.55, 0); }
+        if (e.key === 'ArrowRight' || e.key === 'd') { leverInput.right = true; applyCraneImpulse(0.55, 0); }
+        if (e.key === 'ArrowUp' || e.key === 'w') { leverInput.back = true; applyCraneImpulse(0, -0.55); }
+        if (e.key === 'ArrowDown' || e.key === 's') { leverInput.front = true; applyCraneImpulse(0, 0.55); }
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onLeverDropDown(); }
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (CONFIG.controlMode === '3btn') {
+        if (e.key === '1' || e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') onBtn1Up();
+        if (e.key === '2' || e.key === 'ArrowDown' || e.key === 'w' || e.key === 'W') onBtn2Up();
+      } else {
+        if (e.key === 'ArrowLeft' || e.key === 'a') { leverInput.left = false; applyCraneImpulse(0.65, 0); }
+        if (e.key === 'ArrowRight' || e.key === 'd') { leverInput.right = false; applyCraneImpulse(-0.65, 0); }
+        if (e.key === 'ArrowUp' || e.key === 'w') { leverInput.back = false; applyCraneImpulse(0, 0.65); }
+        if (e.key === 'ArrowDown' || e.key === 's') { leverInput.front = false; applyCraneImpulse(0, -0.65); }
+      }
+    });
+
+    function switchControlMode(mode) {
+      sessionToken++;
+      sfx.stopMotor();
+      CONFIG.controlMode = mode;
+      const b3 = document.getElementById('mode-3btn');
+      const bl = document.getElementById('mode-lever');
+      const p3 = document.getElementById('panel-3btn');
+      const pl = document.getElementById('panel-lever');
+
+      if (mode === '3btn') {
+        b3.className = 'px-2.5 py-1 rounded-md text-[11px] font-bold bg-pink-600 text-white shadow transition';
+        bl.className = 'px-2.5 py-1 rounded-md text-[11px] font-bold text-slate-400 hover:text-white transition';
+        p3.classList.remove('hidden');
+        pl.classList.add('hidden');
+        currentState = STATE.READY_X;
+      } else {
+        bl.className = 'px-2.5 py-1 rounded-md text-[11px] font-bold bg-cyan-600 text-white shadow transition';
+        b3.className = 'px-2.5 py-1 rounded-md text-[11px] font-bold text-slate-400 hover:text-white transition';
+        pl.classList.remove('hidden');
+        p3.classList.add('hidden');
+        currentState = STATE.LEVER_FREE;
+        leverTimer = 20.0;
+      }
+      crane.x = CONFIG.homeX;
+      crane.z = CONFIG.zStartMode === 'aligned' ? CONFIG.targetZ : CONFIG.homeZStandard;
+      crane.prevX = crane.x;
+      crane.prevZ = crane.z;
+      crane.vx = 0;
+      crane.vz = 0;
+      crane.prevVx = 0;
+      crane.prevVz = 0;
+      crane.payOut = crane.minPayOut;
+      crane.prevPayOut = crane.minPayOut;
+      updateUI();
+      notify(mode === 'lever' ? '【レバー自由操作モード】20秒間自由に揺れを作って下降スタートで狙えます！' : '【2ボタン式モード】①右移動 → ②手前移動で狙います（下降量は台設定に従います）');
+    }
+    document.getElementById('mode-3btn').addEventListener('click', () => switchControlMode('3btn'));
+    document.getElementById('mode-lever').addEventListener('click', () => switchControlMode('lever'));
+
+    document.getElementById('kick-sway-btn').addEventListener('click', () => {
+      sfx.click(true);
+      const dir = ringPhys.vel.x >= 0 ? 1 : -1;
+      ringPhys.vel.x = THREE.MathUtils.clamp(ringPhys.vel.x + dir * 1.5, -3.0, 3.0);
+      ringPhys.angVel.z = THREE.MathUtils.clamp(ringPhys.angVel.z - dir * 4.0, -8.0, 8.0);
+      notify('真円Oリングに実機周期の大きな横スイングを与えました！', 'info', 2400);
+    });
+    document.getElementById('calm-sway-btn').addEventListener('click', () => {
+      sfx.click(false);
+      ringPhys.vel.set(0, 0, 0);
+      ringPhys.angVel.set(0, 0, 0);
+      notify('Oリングの揺れを静止させました');
+    });
+
+    const settingsDrawer = document.getElementById('settings-drawer');
+    document.getElementById('open-settings-btn').addEventListener('click', () => {
+      sfx.click();
+      settingsDrawer.classList.toggle('hidden');
+    });
+    document.getElementById('close-settings-btn').addEventListener('click', () => {
+      sfx.click(false);
+      settingsDrawer.classList.add('hidden');
+    });
+
+    document.getElementById('cfg-hook-dir').addEventListener('change', (e) => {
+      CONFIG.hookDir = e.target.value;
+      rebuildQuestionHook();
+      const openVec = getHookOpenVector();
+      notify(`？フックの向きを【${openVec.label}】に変更しました`);
+    });
+
+    document.getElementById('cfg-climax-speed').addEventListener('change', (e) => {
+      CONFIG.climaxSlowScale = parseFloat(e.target.value);
+      notify(`フック接近〜引っ掛かり時の再生速度を【${CONFIG.climaxSlowScale}倍速】に設定しました`);
+    });
+
+    document.getElementById('cfg-hook-gap').addEventListener('change', (e) => {
+      CONFIG.hookGapMode = e.target.value;
+      rebuildQuestionHook();
+      notify('？フックの開口幅（難易度）を更新しました');
+    });
+
+    const dropFloorSelect = document.getElementById('cfg-drop-floor');
+    const dropMmSlider = document.getElementById('cfg-drop-mm-slider');
+    const dropMmLabel = document.getElementById('cfg-drop-mm-label');
+
+    function syncDropClearanceUI(mmVal) {
+      CONFIG.dropClearanceMm = mmVal;
+      dropMmSlider.value = String(mmVal);
+      dropMmLabel.textContent = `${mmVal >= 0 ? '+' : ''}${mmVal} mm`;
+    }
+
+    dropFloorSelect.addEventListener('change', (e) => {
+      CONFIG.dropFloorMode = e.target.value;
+      if (CONFIG.dropFloorMode === 'just') syncDropClearanceUI(6);
+      else if (CONFIG.dropFloorMode === 'normal') syncDropClearanceUI(-6);
+      else if (CONFIG.dropFloorMode === 'deep') syncDropClearanceUI(-22);
+      else if (CONFIG.dropFloorMode === 'shallow_ng') syncDropClearanceUI(22);
+      notify(`筐体の下降量設定を【${CONFIG.dropClearanceMm >= 0 ? '+' : ''}${CONFIG.dropClearanceMm}mm】に変更しました`);
+    });
+
+    dropMmSlider.addEventListener('input', (e) => {
+      const mm = parseInt(e.target.value, 10);
+      syncDropClearanceUI(mm);
+    });
+
+    document.getElementById('cfg-z-start').addEventListener('change', (e) => {
+      CONFIG.zStartMode = e.target.value;
+      crane.z = CONFIG.zStartMode === 'aligned' ? CONFIG.targetZ : CONFIG.homeZStandard;
+      crane.prevZ = crane.z;
+      notify(CONFIG.zStartMode === 'aligned' ? '奥行一致スタート：横移動のみで下降します' : '図面通りスタート：左奥からスタートします');
+    });
+    document.getElementById('cfg-carry-sway').addEventListener('change', (e) => {
+      CONFIG.carryOverSway = e.target.checked;
+    });
+    document.getElementById('cfg-ai-analyzer').addEventListener('change', (e) => {
+      CONFIG.showAIAnalyzer = e.target.checked;
+      syncAIAnalyzerUI();
+    });
+
+    document.getElementById('sway-slider').addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10);
+      if (v === 1) {
+        CONFIG.gravity = 15.5;
+        CONFIG.ringFlutterFreq = 11.5;
+        CONFIG.damping = 0.993;
+        CONFIG.swayGain = 0.90;
+        document.getElementById('damp-label').textContent = '控えめ';
+      } else if (v === 2) {
+        CONFIG.gravity = 16.8;
+        CONFIG.ringFlutterFreq = 13.5;
+        CONFIG.damping = 0.9972;
+        CONFIG.swayGain = 1.35;
+        document.getElementById('damp-label').textContent = '実機標準(大振り)';
+      } else {
+        CONFIG.gravity = 18.2;
+        CONFIG.ringFlutterFreq = 15.5;
+        CONFIG.damping = 0.9985;
+        CONFIG.swayGain = 1.75;
+        document.getElementById('damp-label').textContent = '激揺れ・高感度';
+      }
+    });
+
+    document.getElementById('reset-crane-btn').addEventListener('click', () => {
+      sessionToken++;
+      sfx.stopMotor();
+      isAutoPlay = false;
+      crane.x = CONFIG.homeX;
+      crane.z = CONFIG.zStartMode === 'aligned' ? CONFIG.targetZ : CONFIG.homeZStandard;
+      crane.prevX = crane.x;
+      crane.prevZ = crane.z;
+      crane.vx = 0;
+      crane.vz = 0;
+      crane.prevVx = 0;
+      crane.prevVz = 0;
+      crane.payOut = crane.minPayOut;
+      crane.prevPayOut = crane.minPayOut;
+      ringPhys.prizeDropped = false;
+      ringPhys.prizeDropVelY = 0;
+      ringPhys.prizeTiltX = 0;
+      ringPhys.prizeTiltZ = 0;
+      ringPhys.targetLiftY = 0;
+      ringPhys.targetVelY = 0;
+      ringPhys.liftProgress = 0;
+      ringPhys.inHookCavity = false;
+      ringPhys.hookedLocked = false;
+      resetRingAtRest();
+      currentState = CONFIG.controlMode === 'lever' ? STATE.LEVER_FREE : STATE.READY_X;
+      leverTimer = 20.0;
+      hideAICoachCard();
+      updateUI();
+      notify('クレーンと多層ターゲットを初期状態へリセットしました');
+    });
+
+    document.getElementById('auto-win-btn').addEventListener('click', () => {
+      sfx.click(true);
+      startAutoWinDemo();
+    });
+
+    document.getElementById('sound-btn').addEventListener('click', (e) => {
+      sfx.enabled = !sfx.enabled;
+      if (!sfx.enabled) sfx.stopMotor();
+      e.currentTarget.textContent = sfx.enabled ? '🔊' : '🔇';
+    });
+
+    // スマホ用：下部ボタンの高さオフセット切替（Gemini入力バー＆システムナビバー回避）
+    const bottomOffsets = [152, 180, 96];
+    let bottomOffsetIdx = 0;
+    const posAdjustBtn = document.getElementById('btn-pos-adjust');
+    if (posAdjustBtn) {
+      posAdjustBtn.addEventListener('click', () => {
+        sfx.click();
+        bottomOffsetIdx = (bottomOffsetIdx + 1) % bottomOffsets.length;
+        const px = bottomOffsets[bottomOffsetIdx];
+        document.documentElement.style.setProperty('--btn-bottom-offset', `${px}px`);
+        handleResize();
+        notify(`ボタン高さを調整しました (${px}px)`, 'info', 1400);
+      });
+    }
+
+    function handleResize() {
+      const w = container.clientWidth || window.innerWidth;
+      const h = container.clientHeight || (window.innerHeight - 120);
+      if (w > 0 && h > 0) {
+        mainCamera.aspect = w / h;
+        mainCamera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+        applyMainCamera();
+      }
+    }
+    window.addEventListener('resize', handleResize);
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(handleResize).observe(container);
+    }
+
+    let appStarted = false;
+    function startApp() {
+      if (appStarted) return;
+      appStarted = true;
+      handleResize();
+      syncAIAnalyzerUI();
+      updateUI();
+      animate();
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(startApp, 10);
+    } else {
+      window.addEventListener('DOMContentLoaded', startApp);
+      window.addEventListener('load', startApp);
+    }
+  </script>
+</body>
+</html>
